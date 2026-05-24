@@ -38,6 +38,48 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const [muted, setMuted] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const clientRef = useRef<any>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const ringTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function startRing(type: 'inbound' | 'outbound') {
+    stopRing()
+    if (typeof window === 'undefined') return
+    const ctx = new AudioContext()
+    audioCtxRef.current = ctx
+
+    function beep() {
+      const gain = ctx.createGain()
+      gain.gain.value = 0.12
+      gain.connect(ctx.destination)
+
+      if (type === 'outbound') {
+        // US ringback: 440Hz + 480Hz
+        ;[440, 480].forEach(freq => {
+          const osc = ctx.createOscillator()
+          osc.frequency.value = freq
+          osc.connect(gain)
+          osc.start()
+          osc.stop(ctx.currentTime + 2)
+        })
+      } else {
+        // Inbound: two-tone ring (480Hz + 620Hz)
+        ;[480, 620].forEach(freq => {
+          const osc = ctx.createOscillator()
+          osc.frequency.value = freq
+          osc.connect(gain)
+          osc.start()
+          osc.stop(ctx.currentTime + 2)
+        })
+      }
+      ringTimerRef.current = setTimeout(beep, 6000)
+    }
+    beep()
+  }
+
+  function stopRing() {
+    if (ringTimerRef.current) { clearTimeout(ringTimerRef.current); ringTimerRef.current = null }
+    if (audioCtxRef.current) { audioCtxRef.current.close().catch(() => {}); audioCtxRef.current = null }
+  }
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -90,7 +132,9 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
               state: 'ringing',
               telnyxCall: call,
             })
+            startRing('inbound')
           } else if (call.state === 'active') {
+            stopRing()
             setActiveCall(prev => prev ? { ...prev, state: 'active', telnyxCall: call } : null)
             if (call.remoteStream) {
               let audio = document.getElementById('telnyx-remote-audio') as HTMLAudioElement
@@ -104,6 +148,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
               audio.play().catch(console.error)
             }
           } else if (call.state === 'hangup' || call.state === 'destroy') {
+            stopRing()
             setActiveCall(null)
             setMuted(false)
             const audio = document.getElementById('telnyx-remote-audio') as HTMLAudioElement
@@ -144,6 +189,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       state: 'ringing',
       telnyxCall: call,
     })
+    startRing('outbound')
   }
 
   function answerCall() {
@@ -154,6 +200,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   function hangupCall() {
     if (!activeCall?.telnyxCall) return
     activeCall.telnyxCall.hangup()
+    stopRing()
     setActiveCall(null)
     setMuted(false)
   }
