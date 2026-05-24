@@ -24,51 +24,76 @@ async function handle(req: NextRequest) {
   const callSid = params.get('CallSid') || ''
 
   const [db, BASE_URL] = [createServerClient(), await getAppUrl()]
+  const toDigits = to.replace(/\D/g, '')
 
-  const { data: group } = await db
+  // --- 1. Try inbound group match ---
+  const { data: allGroups } = await db
     .from('inbound_groups')
     .select('*, inbound_group_members(agent_id)')
-    .eq('phone_number', to)
-    .single()
 
-  if (!group) {
-    return texml(`<Say>This number is not configured.</Say><Hangup/>`)
+  const group = allGroups?.find(g => g.phone_number?.replace(/\D/g, '') === toDigits) ?? null
+
+  if (group) {
+    await db.from('dialer_calls').insert({
+      direction: 'inbound',
+      from_number: from,
+      to_number: to,
+      group_id: group.id,
+      status: 'ringing',
+      telnyx_call_control_id: callSid,
+      started_at: new Date().toISOString(),
+    })
+
+    const agentIds = (group.inbound_group_members || []).map((m: { agent_id: string }) => m.agent_id)
+
+    const { data: agents } = agentIds.length
+      ? await db.from('agents').select('sip_username, sip_connection_id').in('id', agentIds)
+      : { data: [] }
+
+    const voicemailXml = group.voicemail_enabled
+      ? `<Say>Please leave a message after the beep.</Say>\n  <Record maxLength="120" recordingStatusCallback="${BASE_URL}/api/webhooks/voice/recording"/>`
+      : `<Say>No agents are available. Goodbye.</Say>`
+
+    if (!agents || agents.length === 0) {
+      await db.from('dialer_calls').update({ status: 'no-answer', ended_at: new Date().toISOString() }).eq('telnyx_call_control_id', callSid)
+      return texml(`<Say>All agents are currently unavailable.</Say>\n  ${voicemailXml}`)
+    }
+
+    const sipTargets = agents
+      .map((a: { sip_username: string; sip_connection_id: string | null }) => `  <Sip>${agentSipUri(a.sip_username, a.sip_connection_id)}</Sip>`)
+      .join('\n')
+
+    return texml(`<Dial timeout="20" action="${BASE_URL}/api/webhooks/voice/status">\n${sipTargets}\n  </Dial>`)
   }
 
-  // Log the call
-  await db.from('dialer_calls').insert({
-    direction: 'inbound',
-    from_number: from,
-    to_number: to,
-    group_id: group.id,
-    status: 'ringing',
-    telnyx_call_control_id: callSid,
-    started_at: new Date().toISOString(),
-  })
+  // --- 2. Try direct agent line (extension or did field) ---
+  const { data: allAgents } = await db
+    .from('agents')
+    .select('id, sip_username, sip_connection_id, extension, did')
 
-  // Get available agents in this group
-  const agentIds = (group.inbound_group_members || []).map((m: { agent_id: string }) => m.agent_id)
+  const directAgent = allAgents?.find(a => {
+    const extDigits = a.extension?.replace(/\D/g, '')
+    const didDigits = a.did?.replace(/\D/g, '')
+    return (extDigits && extDigits === toDigits) || (didDigits && didDigits === toDigits)
+  }) ?? null
 
-  const { data: agents } = agentIds.length
-    ? await db.from('agents').select('sip_username, sip_connection_id').in('id', agentIds).eq('status', 'available')
-    : { data: [] }
+  if (directAgent) {
+    await db.from('dialer_calls').insert({
+      direction: 'inbound',
+      from_number: from,
+      to_number: to,
+      agent_id: directAgent.id,
+      status: 'ringing',
+      telnyx_call_control_id: callSid,
+      started_at: new Date().toISOString(),
+    })
 
-  const voicemailXml = group.voicemail_enabled
-    ? `<Say>Please leave a message after the beep.</Say>\n  <Record maxLength="120" recordingStatusCallback="${BASE_URL}/api/webhooks/voice/recording"/>`
-    : `<Say>No agents are available. Goodbye.</Say>`
-
-  if (!agents || agents.length === 0) {
-    await db.from('dialer_calls').update({ status: 'no-answer', ended_at: new Date().toISOString() }).eq('telnyx_call_control_id', callSid)
-    return texml(`<Say>All agents are currently unavailable.</Say>\n  ${voicemailXml}`)
+    const sipUri = agentSipUri(directAgent.sip_username, directAgent.sip_connection_id)
+    return texml(`<Dial timeout="20" action="${BASE_URL}/api/webhooks/voice/status">\n  <Sip>${sipUri}</Sip>\n  </Dial>`)
   }
 
-  const sipTargets = agents
-    .map((a: { sip_username: string; sip_connection_id: string | null }) => `  <Sip>${agentSipUri(a.sip_username, a.sip_connection_id)}</Sip>`)
-    .join('\n')
-
-  return texml(
-    `<Dial timeout="20" action="${BASE_URL}/api/webhooks/voice/status">\n${sipTargets}\n  </Dial>`
-  )
+  // --- 3. Nothing matched ---
+  return texml(`<Say>This number is not configured.</Say><Hangup/>`)
 }
 
 export async function GET(req: NextRequest) { return handle(req) }

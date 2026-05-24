@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { PhoneIncoming, PhoneOutgoing, Clock, Play, Pause, Voicemail } from 'lucide-react'
+import { PhoneIncoming, PhoneOutgoing, Clock, Voicemail, Pencil, Check, X } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 
 interface CallRow {
@@ -12,8 +12,8 @@ interface CallRow {
   to_number: string
   status: string
   disposition: string | null
+  notes: string | null
   duration_seconds: number | null
-  recording_url: string | null
   started_at: string
   agents: { id: string; name: string; email: string } | null
 }
@@ -33,31 +33,111 @@ interface Recording {
   } | null
 }
 
+const DISPOSITIONS = ['Interested', 'Callback', 'Not Interested', 'No Answer', 'Wrong Number', 'DNC']
+
+const DISPO_COLORS: Record<string, string> = {
+  'Interested':     'bg-green-900/40 text-green-300',
+  'Callback':       'bg-blue-900/40 text-blue-300',
+  'Not Interested': 'bg-red-900/40 text-red-300',
+  'No Answer':      'bg-gray-700 text-gray-400',
+  'Wrong Number':   'bg-yellow-900/40 text-yellow-300',
+  'DNC':            'bg-orange-900/40 text-orange-300',
+}
+
 function fmt(s: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
-function AudioPlayer({ url }: { url: string }) {
-  const [playing, setPlaying] = useState(false)
-  const ref = useRef<HTMLAudioElement | null>(null)
+function EditableCall({ call, onSaved }: { call: CallRow; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [dispo, setDispo] = useState(call.disposition || '')
+  const [notes, setNotes] = useState(call.notes || '')
+  const [saving, setSaving] = useState(false)
 
-  function toggle() {
-    if (!ref.current) {
-      ref.current = new Audio(url)
-      ref.current.onended = () => setPlaying(false)
-    }
-    if (playing) { ref.current.pause(); setPlaying(false) }
-    else { ref.current.play(); setPlaying(true) }
+  async function save() {
+    setSaving(true)
+    await fetch('/api/admin/calls', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: call.id, disposition: dispo || null, notes: notes.trim() || null }),
+    })
+    setSaving(false)
+    setEditing(false)
+    onSaved()
   }
 
   return (
-    <button
-      onClick={toggle}
-      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-600 text-white text-xs rounded-lg transition-colors"
-    >
-      {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-      {playing ? 'Pause' : 'Play'}
-    </button>
+    <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+      {/* Main row */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        <span className={`p-2 rounded-full shrink-0 ${call.direction === 'inbound' ? 'bg-green-900/40 text-green-400' : 'bg-blue-900/40 text-blue-400'}`}>
+          {call.direction === 'inbound' ? <PhoneIncoming className="w-4 h-4" /> : <PhoneOutgoing className="w-4 h-4" />}
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-white text-sm font-medium">
+              {call.direction === 'inbound' ? call.from_number : call.to_number}
+            </p>
+            {call.disposition && !editing && (
+              <span className={`text-xs px-2 py-0.5 rounded-full ${DISPO_COLORS[call.disposition] || 'bg-gray-700 text-gray-300'}`}>
+                {call.disposition}
+              </span>
+            )}
+          </div>
+          <p className="text-gray-500 text-xs">
+            {call.agents?.name || 'No agent'} · {new Date(call.started_at).toLocaleString()} · {call.status}
+          </p>
+        </div>
+        {call.duration_seconds != null && (
+          <div className="flex items-center gap-1 text-gray-400 text-xs shrink-0">
+            <Clock className="w-3 h-3" />
+            {fmt(call.duration_seconds)}
+          </div>
+        )}
+        {editing ? (
+          <div className="flex items-center gap-1 shrink-0">
+            <button onClick={save} disabled={saving} className="text-green-400 hover:text-green-300 disabled:opacity-50"><Check className="w-4 h-4" /></button>
+            <button onClick={() => { setEditing(false); setDispo(call.disposition || ''); setNotes(call.notes || '') }} className="text-gray-500 hover:text-gray-300"><X className="w-4 h-4" /></button>
+          </div>
+        ) : (
+          <button onClick={() => setEditing(true)} className="text-gray-600 hover:text-gray-300 shrink-0"><Pencil className="w-3.5 h-3.5" /></button>
+        )}
+      </div>
+
+      {/* Notes preview (when not editing) */}
+      {!editing && call.notes && (
+        <div className="px-4 pb-3 pl-14">
+          <p className="text-gray-500 text-xs italic">"{call.notes}"</p>
+        </div>
+      )}
+
+      {/* Inline edit panel */}
+      {editing && (
+        <div className="border-t border-gray-700 px-4 pb-4 pt-3 space-y-3">
+          <div>
+            <label className="text-gray-500 text-xs mb-1 block">Disposition</label>
+            <select
+              value={dispo}
+              onChange={e => setDispo(e.target.value)}
+              className="w-full bg-gray-900 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 border border-gray-700"
+            >
+              <option value="">— none —</option>
+              {DISPOSITIONS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-gray-500 text-xs mb-1 block">Notes</label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Add or edit call notes…"
+              className="w-full bg-gray-900 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600 resize-none border border-gray-700"
+            />
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -116,14 +196,13 @@ export default function AdminCallsPage() {
               tab === t ? 'border-blue-500 text-white' : 'border-transparent text-gray-400 hover:text-white'
             }`}
           >
-            {t === 'history' ? 'Call History' : 'Recordings'}
+            {t === 'history' ? 'Call History' : 'Voicemails'}
           </button>
         ))}
       </div>
 
       {tab === 'history' && (
         <div className="space-y-4">
-          {/* Agent filter */}
           <div className="flex items-center gap-3">
             <select
               value={filterAgent}
@@ -145,31 +224,7 @@ export default function AdminCallsPage() {
           ) : (
             <div className="space-y-2">
               {calls.map(call => (
-                <div key={call.id} className="flex items-center gap-3 bg-gray-800 rounded-xl px-4 py-3 border border-gray-700">
-                  <span className={`p-2 rounded-full shrink-0 ${call.direction === 'inbound' ? 'bg-green-900/40 text-green-400' : 'bg-blue-900/40 text-blue-400'}`}>
-                    {call.direction === 'inbound' ? <PhoneIncoming className="w-4 h-4" /> : <PhoneOutgoing className="w-4 h-4" />}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-white text-sm font-medium">
-                        {call.direction === 'inbound' ? call.from_number : call.to_number}
-                      </p>
-                      {call.disposition && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900/40 text-blue-300">{call.disposition}</span>
-                      )}
-                    </div>
-                    <p className="text-gray-500 text-xs">
-                      {call.agents?.name || 'No agent'} · {new Date(call.started_at).toLocaleString()} · {call.status}
-                    </p>
-                  </div>
-                  {call.duration_seconds != null && (
-                    <div className="flex items-center gap-1 text-gray-400 text-xs shrink-0">
-                      <Clock className="w-3 h-3" />
-                      {fmt(call.duration_seconds)}
-                    </div>
-                  )}
-                  {call.recording_url && <AudioPlayer url={call.recording_url} />}
-                </div>
+                <EditableCall key={call.id} call={call} onSaved={() => loadCalls(filterAgent)} />
               ))}
             </div>
           )}
@@ -179,7 +234,7 @@ export default function AdminCallsPage() {
       {tab === 'recordings' && (
         <div className="space-y-2">
           {recordings.length === 0 ? (
-            <p className="text-gray-600 text-sm">No recordings yet</p>
+            <p className="text-gray-600 text-sm">No voicemails yet</p>
           ) : (
             recordings.map(rec => (
               <div key={rec.id} className="flex items-center gap-3 bg-gray-800 rounded-xl px-4 py-3 border border-gray-700">
@@ -195,7 +250,6 @@ export default function AdminCallsPage() {
                     <p className="text-gray-400 text-xs mt-1 italic">"{rec.transcription}"</p>
                   )}
                 </div>
-                <AudioPlayer url={rec.recording_url} />
               </div>
             ))
           )}

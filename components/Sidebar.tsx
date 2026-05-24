@@ -30,9 +30,11 @@ function StatusPicker() {
   const [open, setOpen] = useState(false)
 
   if (!agent) return null
-  const current = STATUS_OPTIONS.find(o => o.value === agent.status) ?? STATUS_OPTIONS[2]
+  const currentAgent = agent
+  const current = STATUS_OPTIONS.find(o => o.value === currentAgent.status) ?? STATUS_OPTIONS[2]
 
   async function pick(value: string) {
+    if (!agent) return
     setOpen(false)
     const updated = { ...agent, status: value as typeof agent.status }
     setAgent(updated)
@@ -59,7 +61,7 @@ function StatusPicker() {
             <button
               key={opt.value}
               onClick={() => pick(opt.value)}
-              className={`flex items-center gap-2 w-full px-3 py-2 text-xs text-left hover:bg-gray-700 transition-colors ${agent.status === opt.value ? 'text-white' : 'text-gray-400'}`}
+              className={`flex items-center gap-2 w-full px-3 py-2 text-xs text-left hover:bg-gray-700 transition-colors ${currentAgent.status === opt.value ? 'text-white' : 'text-gray-400'}`}
             >
               <span className={`w-2 h-2 rounded-full ${opt.dot}`} />
               {opt.label}

@@ -1,13 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import { Agent } from './types'
-
-const supabaseBrowser = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
 
 type CallState = 'idle' | 'ringing' | 'active' | 'held'
 
@@ -46,11 +40,6 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const clientRef = useRef<any>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const ringTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const recorderRef = useRef<MediaRecorder | null>(null)
-  const recChunksRef = useRef<BlobPart[]>([])
-  const recCallIdRef = useRef<string | null>(null)
-  const recMicStreamRef = useRef<MediaStream | null>(null)
-  const recAudioCtxRef = useRef<AudioContext | null>(null)
 
   function startRing(type: 'inbound' | 'outbound') {
     stopRing()
@@ -92,71 +81,23 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     if (audioCtxRef.current) { audioCtxRef.current.close().catch(() => {}); audioCtxRef.current = null }
   }
 
-  async function startRecording(callId: string, remoteStream: MediaStream) {
-    try {
-      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      recMicStreamRef.current = micStream
-
-      const ctx = new AudioContext()
-      recAudioCtxRef.current = ctx
-      const dest = ctx.createMediaStreamDestination()
-      ctx.createMediaStreamSource(remoteStream).connect(dest)
-      ctx.createMediaStreamSource(micStream).connect(dest)
-
-      const mr = new MediaRecorder(dest.stream, { mimeType: 'audio/webm' })
-      recChunksRef.current = []
-      mr.ondataavailable = e => recChunksRef.current.push(e.data)
-      mr.start()
-      recorderRef.current = mr
-      recCallIdRef.current = callId
-    } catch (err) {
-      console.warn('[Recording] could not start:', err)
-    }
-  }
-
-  async function stopRecording() {
-    const mr = recorderRef.current
-    const callId = recCallIdRef.current
-    recorderRef.current = null
-    recCallIdRef.current = null
-    recMicStreamRef.current?.getTracks().forEach(t => t.stop())
-    recMicStreamRef.current = null
-    recAudioCtxRef.current?.close().catch(() => {})
-    recAudioCtxRef.current = null
-
-    if (!mr || !callId) return
-    mr.stop()
-    await new Promise<void>(res => { mr.onstop = () => res() })
-
-    const blob = new Blob(recChunksRef.current, { type: 'audio/webm' })
-    recChunksRef.current = []
-    if (blob.size < 1000) return // skip empty recordings
-
-    const path = `${callId}.webm`
-    const { error } = await supabaseBrowser.storage
-      .from('call-recordings')
-      .upload(path, blob, { contentType: 'audio/webm', upsert: true })
-    if (error) { console.error('[Recording] upload failed:', error); return }
-
-    const { data: { publicUrl } } = supabaseBrowser.storage
-      .from('call-recordings')
-      .getPublicUrl(path)
-
-    await fetch('/api/calls/recording', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ call_id: callId, recording_url: publicUrl }),
-    }).catch(console.error)
-  }
-
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    // Restore agent from localStorage on mount
+    // Restore agent from localStorage on mount and sync status back to DB
     const stored = localStorage.getItem('dialer_agent')
     if (stored) {
       try {
-        setAgent(JSON.parse(stored))
+        const a = JSON.parse(stored)
+        setAgent(a)
+        // DB status may be stale from a previous session — push it back
+        if (a?.id && a?.status) {
+          fetch('/api/agents', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: a.id, status: a.status }),
+          }).catch(() => {})
+        }
       } catch {}
     }
     setAgentLoading(false)
@@ -169,6 +110,16 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
 
     async function initClient() {
       const { TelnyxRTC } = await import('@telnyx/webrtc')
+
+      // Suppress a known Telnyx SDK timing warning that shows in the Next.js
+      // dev overlay. The SDK logs this when a 180 Ringing SIP response arrives
+      // before the call is fully registered in its internal map — harmless.
+      const origError = console.error.bind(console)
+      console.error = (...args: unknown[]) => {
+        if (typeof args[0] === 'string' && args[0].includes('non existing call')) return
+        origError(...args)
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const client: any = new TelnyxRTC({
         login: agent!.sip_username,
@@ -214,11 +165,9 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
               }
               audio.srcObject = call.remoteStream
               audio.play().catch(console.error)
-              startRecording(call.id, call.remoteStream)
             }
           } else if (call.state === 'hangup' || call.state === 'destroy') {
             stopRing()
-            stopRecording()
             setActiveCall(null)
             setMuted(false)
             const audio = document.getElementById('telnyx-remote-audio') as HTMLAudioElement
@@ -248,6 +197,18 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
 
   function makeCall(number: string) {
     if (!clientRef.current || !agent) return
+
+    // Log the outbound call so it appears in call history
+    fetch('/api/calls', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from_number: agent.extension || agent.sip_username,
+        to_number: number,
+        agent_id: agent.id,
+      }),
+    }).catch(() => {})
+
     const call = clientRef.current.newCall({
       destinationNumber: number,
       callerNumber: agent.extension || agent.sip_username,
@@ -271,7 +232,6 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     if (!activeCall?.telnyxCall) return
     activeCall.telnyxCall.hangup()
     stopRing()
-    stopRecording()
     setActiveCall(null)
     setMuted(false)
   }

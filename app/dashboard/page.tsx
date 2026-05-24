@@ -25,7 +25,9 @@ export default function DashboardPage() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [index, setIndex] = useState(0)
   const [callHistory, setCallHistory] = useState<Call[]>([])
-  const [wrapup, setWrapup] = useState<{ lead: Lead; callId: string | null } | null>(null)
+  const [wrapup, setWrapup] = useState<{ lead: Lead } | null>(null)
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
   const prevCallRef = useRef(activeCall)
 
   useEffect(() => {
@@ -53,30 +55,38 @@ export default function DashboardPage() {
     const prev = prevCallRef.current
     prevCallRef.current = activeCall
     if (prev && !activeCall && lead) {
-      setWrapup({ lead, callId: null })
+      setWrapup({ lead })
+      setNotes('')
     }
   }, [activeCall])
 
   async function saveDisposition(disp: string) {
-    if (!wrapup) return
+    if (!wrapup || !agent) return
+    setSaving(true)
     const { lead: calledLead } = wrapup
 
-    // Update lead status and save disposition to most recent call
     await Promise.all([
-      fetch(`/api/leads`, {
+      fetch('/api/leads', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: calledLead.id, status: disp }),
       }),
-      fetch(`/api/calls/disposition`, {
+      fetch('/api/calls/disposition', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lead_phone: calledLead.phone, disposition: disp }),
+        body: JSON.stringify({
+          lead_phone: calledLead.phone,
+          lead_id: calledLead.id,
+          agent_id: agent.id,
+          disposition: disp,
+          notes: notes.trim() || null,
+        }),
       }),
     ])
 
+    setSaving(false)
     setWrapup(null)
-    // Refresh call history and advance to next lead
+    setNotes('')
     setIndex(i => Math.min(i + 1, leads.length - 1))
   }
 
@@ -121,22 +131,42 @@ export default function DashboardPage() {
         {lead && (
           <div className="flex-1 min-w-72 space-y-4">
             {wrapup ? (
-              /* ── Disposition picker ── */
-              <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
-                <p className="text-white font-semibold text-base mb-0.5">
-                  {wrapup.lead.company_name || [wrapup.lead.first_name, wrapup.lead.last_name].filter(Boolean).join(' ') || wrapup.lead.name}
-                </p>
-                <p className="text-gray-500 text-sm mb-5">Select a disposition</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {DISPOSITIONS.map(({ label, color }) => (
-                    <button
-                      key={label}
-                      onClick={() => saveDisposition(label)}
-                      className={`${color} text-white text-sm font-medium py-2.5 rounded-lg transition-colors`}
-                    >
-                      {label}
-                    </button>
-                  ))}
+              /* ── Wrap-up: notes + disposition ── */
+              <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 space-y-4">
+                <div>
+                  <p className="text-white font-semibold text-base">
+                    {wrapup.lead.company_name || [wrapup.lead.first_name, wrapup.lead.last_name].filter(Boolean).join(' ') || wrapup.lead.name}
+                  </p>
+                  <p className="text-gray-500 text-sm">Call ended · add notes then select a disposition</p>
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label className="text-gray-400 text-xs uppercase tracking-widest mb-1.5 block">Call Notes</label>
+                  <textarea
+                    value={notes}
+                    onChange={e => setNotes(e.target.value)}
+                    placeholder="What happened on this call? (saved to CRM)"
+                    rows={4}
+                    className="w-full bg-gray-900 text-white text-sm rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600 resize-none"
+                  />
+                </div>
+
+                {/* Dispositions */}
+                <div>
+                  <label className="text-gray-400 text-xs uppercase tracking-widest mb-1.5 block">Disposition</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {DISPOSITIONS.map(({ label, color }) => (
+                      <button
+                        key={label}
+                        onClick={() => saveDisposition(label)}
+                        disabled={saving}
+                        className={`${color} disabled:opacity-50 text-white text-sm font-medium py-2.5 rounded-lg transition-colors`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -193,19 +223,29 @@ export default function DashboardPage() {
                 <p className="text-gray-400 text-xs uppercase tracking-widest mb-3">Previous Dials</p>
                 <div className="space-y-2">
                   {callHistory.map(call => (
-                    <div key={call.id} className="flex items-center gap-3 bg-gray-800 rounded-xl px-4 py-3 border border-gray-700">
-                      <span className={`p-2 rounded-full ${call.direction === 'inbound' ? 'bg-green-900/40 text-green-400' : 'bg-blue-900/40 text-blue-400'}`}>
-                        {call.direction === 'inbound' ? <PhoneIncoming className="w-4 h-4" /> : <PhoneOutgoing className="w-4 h-4" />}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-gray-300 text-sm">{new Date(call.started_at).toLocaleString()}</p>
-                        <p className="text-gray-500 text-xs">{call.status}{(call as any).disposition ? ` · ${(call as any).disposition}` : ''}</p>
-                      </div>
-                      {call.duration_seconds != null && (
-                        <div className="flex items-center gap-1 text-gray-400 text-xs shrink-0">
-                          <Clock className="w-3 h-3" />
-                          {Math.floor(call.duration_seconds / 60)}:{String(call.duration_seconds % 60).padStart(2, '0')}
+                    <div key={call.id} className="bg-gray-800 rounded-xl px-4 py-3 border border-gray-700">
+                      <div className="flex items-center gap-3">
+                        <span className={`p-2 rounded-full ${call.direction === 'inbound' ? 'bg-green-900/40 text-green-400' : 'bg-blue-900/40 text-blue-400'}`}>
+                          {call.direction === 'inbound' ? <PhoneIncoming className="w-4 h-4" /> : <PhoneOutgoing className="w-4 h-4" />}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-gray-300 text-sm">{new Date(call.started_at).toLocaleString()}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-gray-500 text-xs">{call.status}</p>
+                            {(call as any).disposition && (
+                              <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-900/40 text-blue-300">{(call as any).disposition}</span>
+                            )}
+                          </div>
                         </div>
+                        {call.duration_seconds != null && (
+                          <div className="flex items-center gap-1 text-gray-400 text-xs shrink-0">
+                            <Clock className="w-3 h-3" />
+                            {Math.floor(call.duration_seconds / 60)}:{String(call.duration_seconds % 60).padStart(2, '0')}
+                          </div>
+                        )}
+                      </div>
+                      {(call as any).notes && (
+                        <p className="text-gray-500 text-xs mt-2 pl-11 italic">"{(call as any).notes}"</p>
                       )}
                     </div>
                   ))}

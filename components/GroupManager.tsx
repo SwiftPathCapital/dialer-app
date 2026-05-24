@@ -22,9 +22,11 @@ export default function GroupManager() {
       fetch('/api/groups').then(r => r.json()),
       fetch('/api/agents').then(r => r.json()),
     ])
-    setGroups(Array.isArray(g) ? g : [])
+    const loadedGroups: GroupWithMembers[] = Array.isArray(g) ? g : []
+    setGroups(loadedGroups)
     setAgents(Array.isArray(a) ? a : [])
     setLoading(false)
+    return loadedGroups
   }
 
   useEffect(() => { load() }, [])
@@ -37,12 +39,13 @@ export default function GroupManager() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newName.trim(), phone_number: newPhone.trim() || null }),
     })
-    const group = await res.json()
+    const created = await res.json()
     setNewName('')
     setNewPhone('')
     setCreating(false)
-    await load()
-    setSelected(group)
+    const loaded = await load()
+    const fresh = loaded.find(g => g.id === created.id)
+    if (fresh) setSelected(fresh)
   }
 
   async function deleteGroup(id: string) {
@@ -63,8 +66,8 @@ export default function GroupManager() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: groupId, members }),
     })
-    await load()
-    const updated = groups.find(g => g.id === groupId)
+    const loaded = await load()
+    const updated = loaded.find(g => g.id === groupId)
     if (updated) setSelected(updated)
   }
 

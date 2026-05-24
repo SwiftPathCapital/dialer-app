@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, Pencil, Check, X } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import GroupManager from '@/components/GroupManager'
 import { Agent } from '@/lib/types'
@@ -16,6 +16,10 @@ export default function AdminGroupsPage() {
   // New agent form
   const [form, setForm] = useState({ name: '', email: '', sip_username: '', sip_password: '', extension: '' })
   const [saving, setSaving] = useState(false)
+  // Inline edit state
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ extension: '', sip_username: '', sip_password: '' })
+  const [editError, setEditError] = useState<string | null>(null)
 
   useEffect(() => {
     if (agentLoading) return
@@ -45,6 +49,34 @@ export default function AdminGroupsPage() {
   async function deleteAgent(id: string) {
     if (!confirm('Remove this agent?')) return
     await fetch(`/api/agents?id=${id}`, { method: 'DELETE' })
+    await loadAgents()
+  }
+
+  function startEdit(a: Agent) {
+    setEditingId(a.id)
+    setEditForm({ extension: a.extension || '', sip_username: a.sip_username || '', sip_password: '' })
+    setEditError(null)
+  }
+
+  async function saveEdit(id: string) {
+    setEditError(null)
+    // Only include fields that have values to avoid blanking existing data
+    const body: Record<string, string> = { id }
+    if (editForm.extension !== undefined) body.extension = editForm.extension
+    if (editForm.sip_username) body.sip_username = editForm.sip_username
+    if (editForm.sip_password) body.sip_password = editForm.sip_password
+
+    const res = await fetch('/api/agents', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      setEditError(data.error || `Save failed (${res.status})`)
+      return
+    }
+    setEditingId(null)
     await loadAgents()
   }
 
@@ -80,21 +112,76 @@ export default function AdminGroupsPage() {
           {/* Agent list */}
           <div className="space-y-2">
             {agents.map(a => (
-              <div key={a.id} className="flex items-center gap-3 bg-gray-800 rounded-xl px-4 py-3 border border-gray-700">
-                <div className="flex-1 min-w-0">
-                  <p className="text-white font-medium">{a.name}</p>
-                  <p className="text-gray-400 text-xs">{a.email} · SIP: {a.sip_username || 'not set'}</p>
+              <div key={a.id} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                {/* Agent header row */}
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-medium">{a.name}</p>
+                    <p className="text-gray-400 text-xs">{a.email}</p>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    a.status === 'available' ? 'bg-green-900/40 text-green-400' :
+                    a.status === 'busy' ? 'bg-yellow-900/40 text-yellow-400' :
+                    'bg-gray-700 text-gray-400'
+                  }`}>
+                    {a.status}
+                  </span>
+                  {editingId === a.id ? (
+                    <>
+                      <button onClick={() => saveEdit(a.id)} className="text-green-400 hover:text-green-300"><Check className="w-4 h-4" /></button>
+                      <button onClick={() => setEditingId(null)} className="text-gray-500 hover:text-gray-300"><X className="w-4 h-4" /></button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => startEdit(a)} className="text-gray-400 hover:text-white"><Pencil className="w-4 h-4" /></button>
+                      <button onClick={() => deleteAgent(a.id)} className="text-red-400 hover:text-red-300"><Trash2 className="w-4 h-4" /></button>
+                    </>
+                  )}
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${
-                  a.status === 'available' ? 'bg-green-900/40 text-green-400' :
-                  a.status === 'busy' ? 'bg-yellow-900/40 text-yellow-400' :
-                  'bg-gray-700 text-gray-400'
-                }`}>
-                  {a.status}
-                </span>
-                <button onClick={() => deleteAgent(a.id)} className="text-red-400 hover:text-red-300">
-                  <Trash2 className="w-4 h-4" />
-                </button>
+
+                {/* Inline edit fields */}
+                {editingId === a.id && (
+                  <div className="px-4 pb-4 pt-1 border-t border-gray-700 grid grid-cols-1 gap-2">
+                    {editError && (
+                      <p className="text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-2 py-1">{editError}</p>
+                    )}
+                    <div>
+                      <label className="text-gray-500 text-xs mb-1 block">Direct Line / Extension (e.g. +12345678901)</label>
+                      <input
+                        value={editForm.extension}
+                        onChange={e => setEditForm(p => ({ ...p, extension: e.target.value }))}
+                        placeholder="+1..."
+                        className="w-full bg-gray-900 text-white rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-gray-500 text-xs mb-1 block">SIP Username</label>
+                      <input
+                        value={editForm.sip_username}
+                        onChange={e => setEditForm(p => ({ ...p, sip_username: e.target.value }))}
+                        className="w-full bg-gray-900 text-white rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-gray-500 text-xs mb-1 block">SIP Password (leave blank to keep current)</label>
+                      <input
+                        type="password"
+                        value={editForm.sip_password}
+                        onChange={e => setEditForm(p => ({ ...p, sip_password: e.target.value }))}
+                        placeholder="••••••••"
+                        className="w-full bg-gray-900 text-white rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Summary line when not editing */}
+                {editingId !== a.id && (
+                  <div className="px-4 pb-2 flex gap-4 text-xs text-gray-500">
+                    <span>SIP: {a.sip_username || <span className="text-yellow-600">not set</span>}</span>
+                    <span>Direct: {a.extension || <span className="text-gray-600">not set</span>}</span>
+                  </div>
+                )}
               </div>
             ))}
             {agents.length === 0 && <p className="text-gray-600 text-sm">No agents yet</p>}

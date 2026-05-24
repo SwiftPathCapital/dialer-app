@@ -35,14 +35,11 @@ export async function PATCH(req: NextRequest) {
   const { id, members, ...updates } = body
   const db = createServerClient()
 
-  const { data, error } = await db
-    .from('inbound_groups')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Only run update() when there are actual fields to change — Supabase rejects update({})
+  if (Object.keys(updates).length > 0) {
+    const { error } = await db.from('inbound_groups').update(updates).eq('id', id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 
   // Sync members if provided
   if (Array.isArray(members)) {
@@ -54,6 +51,8 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
+  const { data, error } = await db.from('inbound_groups').select('*').eq('id', id).single()
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
 
