@@ -198,7 +198,12 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   function makeCall(number: string) {
     if (!clientRef.current || !agent) return
 
-    // Log the outbound call so it appears in call history
+    const call = clientRef.current.newCall({
+      destinationNumber: number,
+      callerNumber: agent.extension || agent.sip_username,
+    })
+
+    // Log outbound call with call control ID so call history and admin monitor work
     fetch('/api/calls', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -206,13 +211,10 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
         from_number: agent.extension || agent.sip_username,
         to_number: number,
         agent_id: agent.id,
+        telnyx_call_control_id: call.id,
       }),
     }).catch(() => {})
 
-    const call = clientRef.current.newCall({
-      destinationNumber: number,
-      callerNumber: agent.extension || agent.sip_username,
-    })
     setActiveCall({
       id: call.id,
       direction: 'outbound',

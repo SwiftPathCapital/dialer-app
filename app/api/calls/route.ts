@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
       agent_id: body.agent_id,
       status: 'initiated',
       started_at: new Date().toISOString(),
+      telnyx_call_control_id: body.telnyx_call_control_id || null,
     })
     .select()
     .single()
