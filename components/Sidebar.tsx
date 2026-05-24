@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
+import { useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall } from 'lucide-react'
+import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 
 const NAV = [
@@ -12,15 +13,62 @@ const NAV = [
 ]
 
 const ADMIN_NAV = [
+  { href: '/admin/monitor', icon: Activity, label: 'Monitor' },
   { href: '/admin/calls', icon: PhoneCall, label: 'Call Center' },
   { href: '/admin/groups', icon: Users, label: 'Groups' },
   { href: '/admin/config', icon: SlidersHorizontal, label: 'Config' },
 ]
 
-const STATUS_COLORS: Record<string, string> = {
-  available: 'bg-green-500',
-  busy: 'bg-yellow-500',
-  offline: 'bg-gray-500',
+const STATUS_OPTIONS = [
+  { value: 'available', label: 'Available', dot: 'bg-green-500', text: 'text-green-400' },
+  { value: 'busy',      label: 'Busy',      dot: 'bg-yellow-500', text: 'text-yellow-400' },
+  { value: 'offline',   label: 'Offline',   dot: 'bg-gray-500',  text: 'text-gray-400'  },
+]
+
+function StatusPicker() {
+  const { agent, setAgent } = useSoftphone()
+  const [open, setOpen] = useState(false)
+
+  if (!agent) return null
+  const current = STATUS_OPTIONS.find(o => o.value === agent.status) ?? STATUS_OPTIONS[2]
+
+  async function pick(value: string) {
+    setOpen(false)
+    const updated = { ...agent, status: value as typeof agent.status }
+    setAgent(updated)
+    await fetch('/api/agents', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: agent.id, status: value }),
+    }).catch(() => {})
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(p => !p)}
+        className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg hover:bg-gray-700 transition-colors"
+      >
+        <span className={`w-2 h-2 rounded-full shrink-0 ${current.dot}`} />
+        <span className={`hidden md:block text-xs font-medium ${current.text}`}>{current.label}</span>
+        <span className={`md:hidden w-2 h-2 rounded-full ${current.dot}`} />
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-0 mb-1 w-36 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 overflow-hidden">
+          {STATUS_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => pick(opt.value)}
+              className={`flex items-center gap-2 w-full px-3 py-2 text-xs text-left hover:bg-gray-700 transition-colors ${agent.status === opt.value ? 'text-white' : 'text-gray-400'}`}
+            >
+              <span className={`w-2 h-2 rounded-full ${opt.dot}`} />
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function Sidebar() {
@@ -59,34 +107,36 @@ export default function Sidebar() {
           )
         })}
 
-        {/* Admin section */}
-        <div className="mt-auto pt-4 border-t border-gray-700 space-y-0.5">
-          <p className="hidden md:block text-gray-600 text-xs uppercase tracking-widest px-3 pb-1">Admin</p>
-          {ADMIN_NAV.map(({ href, icon: Icon, label }) => {
-            const active = pathname.startsWith(href)
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  active
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                }`}
-              >
-                <Icon className="w-5 h-5 shrink-0" />
-                <span className="hidden md:block">{label}</span>
-              </Link>
-            )
-          })}
-        </div>
+        {/* Admin section — only visible to admins */}
+        {agent?.role === 'admin' && (
+          <div className="mt-auto pt-4 border-t border-gray-700 space-y-0.5">
+            <p className="hidden md:block text-gray-600 text-xs uppercase tracking-widest px-3 pb-1">Admin</p>
+            {ADMIN_NAV.map(({ href, icon: Icon, label }) => {
+              const active = pathname.startsWith(href)
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    active
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                  }`}
+                >
+                  <Icon className="w-5 h-5 shrink-0" />
+                  <span className="hidden md:block">{label}</span>
+                </Link>
+              )
+            })}
+          </div>
+        )}
       </nav>
 
       {/* Agent status + connection */}
       {agent && (
         <div className="border-t border-gray-700 p-3 space-y-2">
+          {/* Name + connection indicator */}
           <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${STATUS_COLORS[agent.status]}`} />
             <span className="hidden md:block text-gray-300 text-xs truncate">{agent.name}</span>
             <span className="ml-auto hidden md:flex items-center gap-1 text-xs text-gray-500">
               {connected ? (
@@ -96,6 +146,10 @@ export default function Sidebar() {
               )}
             </span>
           </div>
+
+          {/* Status picker */}
+          <StatusPicker />
+
           <button
             onClick={logout}
             className="flex items-center gap-2 text-xs text-gray-500 hover:text-red-400 transition-colors w-full"

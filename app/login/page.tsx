@@ -30,7 +30,7 @@ export default function LoginPage() {
     // Fetch the agents row to get SIP credentials and name
     const { data: agent, error: agentError } = await supabase
       .from('agents')
-      .select('id, name, email, sip_username, sip_password, extension, status, voicemail_greeting_url, updated_at')
+      .select('id, name, email, sip_username, sip_password, extension, status, role, voicemail_greeting_url, updated_at')
       .eq('id', authData.user.id)
       .single()
 

@@ -7,6 +7,7 @@ export interface Agent {
   sip_username: string
   sip_password: string
   status: AgentStatus
+  role: 'admin' | 'agent'
   extension: string | null
   voicemail_greeting_url: string | null
   updated_at: string
