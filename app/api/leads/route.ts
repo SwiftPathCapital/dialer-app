@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabase'
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const agentId = searchParams.get('agent_id')
+  const phone = searchParams.get('phone') || ''
   const search = searchParams.get('search') || ''
   const limit = parseInt(searchParams.get('limit') || '100')
 
@@ -15,12 +16,15 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
     .limit(limit)
 
-  if (agentId) {
-    query = query.or(`assigned_to.eq.${agentId},assigned_to.is.null`)
-  }
-
-  if (search) {
-    query = query.or(`company_name.ilike.%${search}%,name.ilike.%${search}%,phone.ilike.%${search}%`)
+  if (phone) {
+    query = query.ilike('phone', `%${phone}%`)
+  } else {
+    if (agentId) {
+      query = query.or(`assigned_to.eq.${agentId},assigned_to.is.null`)
+    }
+    if (search) {
+      query = query.or(`company_name.ilike.%${search}%,name.ilike.%${search}%,phone.ilike.%${search}%`)
+    }
   }
 
   const { data, error } = await query
