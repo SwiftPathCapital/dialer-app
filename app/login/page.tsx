@@ -3,33 +3,46 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Phone } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 import { useSoftphone } from '@/lib/SoftphoneContext'
-import { Agent } from '@/lib/types'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [email, setEmail]       = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError]       = useState('')
+  const [loading, setLoading]   = useState(false)
   const { setAgent } = useSoftphone()
   const router = useRouter()
 
   async function login() {
-    if (!email.trim()) return
+    if (!email.trim() || !password.trim()) return
     setLoading(true)
     setError('')
 
-    const res = await fetch('/api/agents')
-    const agents: Agent[] = await res.json()
-    const found = agents.find(a => a.email.toLowerCase() === email.toLowerCase())
-
-    if (!found) {
-      setError('No agent found with that email. Ask your admin to add you.')
+    // Sign in via Supabase auth (same credentials as the CRM)
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
+    if (authError) {
+      setError('Invalid email or password.')
       setLoading(false)
       return
     }
 
-    setAgent(found)
+    // Fetch the agents row to get SIP credentials and name
+    const { data: agent, error: agentError } = await supabase
+      .from('agents')
+      .select('id, name, email, sip_username, sip_password, extension, status, voicemail_greeting_url, updated_at')
+      .eq('id', authData.user.id)
+      .single()
+
+    if (agentError || !agent) {
+      setError('Account exists but no agent profile found. Contact your admin.')
+      setLoading(false)
+      return
+    }
+
+    setAgent(agent)
     router.push('/dashboard')
+    setLoading(false)
   }
 
   return (
@@ -41,7 +54,7 @@ export default function LoginPage() {
           </div>
         </div>
         <h1 className="text-2xl font-bold text-white text-center mb-1">SwiftPath Dialer</h1>
-        <p className="text-gray-400 text-sm text-center mb-8">Enter your agent email to continue</p>
+        <p className="text-gray-400 text-sm text-center mb-8">Sign in with your CRM credentials</p>
 
         <div className="space-y-3">
           <input
@@ -49,13 +62,21 @@ export default function LoginPage() {
             value={email}
             onChange={e => setEmail(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && login()}
-            placeholder="agent@swiftpathcapital.net"
+            placeholder="Email"
+            className="w-full bg-gray-900 text-white rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600"
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && login()}
+            placeholder="Password"
             className="w-full bg-gray-900 text-white rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600"
           />
           {error && <p className="text-red-400 text-sm">{error}</p>}
           <button
             onClick={login}
-            disabled={loading || !email.trim()}
+            disabled={loading || !email.trim() || !password.trim()}
             className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold transition-colors"
           >
             {loading ? 'Signing in...' : 'Sign In'}
