@@ -31,3 +31,12 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
+
+export async function PATCH(req: NextRequest) {
+  const body = await req.json()
+  const { id, ...updates } = body
+  const db = createServerClient()
+  const { error } = await db.from('leads').update(updates).eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}

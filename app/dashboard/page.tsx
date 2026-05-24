@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Clock, PhoneIncoming, PhoneOutgoing, ChevronRight, SkipForward, Phone } from 'lucide-react'
+import { Clock, PhoneIncoming, PhoneOutgoing, SkipForward, Phone } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import Dialpad from '@/components/Dialpad'
 import ActiveCall from '@/components/ActiveCall'
@@ -10,12 +10,23 @@ import StatusSelector from '@/components/StatusSelector'
 import VoicemailGreeting from '@/components/VoicemailGreeting'
 import { Lead, Call } from '@/lib/types'
 
+const DISPOSITIONS = [
+  { label: 'Interested',     color: 'bg-green-700 hover:bg-green-600' },
+  { label: 'Callback',       color: 'bg-blue-700 hover:bg-blue-600' },
+  { label: 'Not Interested', color: 'bg-red-700 hover:bg-red-600' },
+  { label: 'No Answer',      color: 'bg-gray-600 hover:bg-gray-500' },
+  { label: 'Wrong Number',   color: 'bg-yellow-700 hover:bg-yellow-600' },
+  { label: 'DNC',            color: 'bg-orange-700 hover:bg-orange-600' },
+]
+
 export default function DashboardPage() {
   const { agent, agentLoading, activeCall, makeCall } = useSoftphone()
   const router = useRouter()
   const [leads, setLeads] = useState<Lead[]>([])
   const [index, setIndex] = useState(0)
   const [callHistory, setCallHistory] = useState<Call[]>([])
+  const [wrapup, setWrapup] = useState<{ lead: Lead; callId: string | null } | null>(null)
+  const prevCallRef = useRef(activeCall)
 
   useEffect(() => {
     if (agentLoading) return
@@ -28,7 +39,6 @@ export default function DashboardPage() {
 
   const lead = leads[index] ?? null
 
-  // Load call history whenever the current lead changes
   useEffect(() => {
     if (!lead?.phone) { setCallHistory([]); return }
     const digits = lead.phone.replace(/\D/g, '')
@@ -38,8 +48,40 @@ export default function DashboardPage() {
       .catch(() => {})
   }, [lead?.id])
 
+  // Detect when a call ends → trigger wrap-up
+  useEffect(() => {
+    const prev = prevCallRef.current
+    prevCallRef.current = activeCall
+    if (prev && !activeCall && lead) {
+      setWrapup({ lead, callId: null })
+    }
+  }, [activeCall])
+
+  async function saveDisposition(disp: string) {
+    if (!wrapup) return
+    const { lead: calledLead } = wrapup
+
+    // Update lead status and save disposition to most recent call
+    await Promise.all([
+      fetch(`/api/leads`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: calledLead.id, status: disp }),
+      }),
+      fetch(`/api/calls/disposition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lead_phone: calledLead.phone, disposition: disp }),
+      }),
+    ])
+
+    setWrapup(null)
+    // Refresh call history and advance to next lead
+    setIndex(i => Math.min(i + 1, leads.length - 1))
+  }
+
   function dial() {
-    if (!lead?.phone) return
+    if (!lead?.phone || wrapup) return
     const e164 = lead.phone.replace(/\D/g, '').replace(/^1?(\d{10})$/, '+1$1')
     makeCall(e164)
   }
@@ -75,55 +117,75 @@ export default function DashboardPage() {
           <VoicemailGreeting />
         </div>
 
-        {/* Right: preview dialer */}
+        {/* Right: wrap-up OR preview dialer */}
         {lead && (
           <div className="flex-1 min-w-72 space-y-4">
-            {/* Lead card */}
-            <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
-              <div className="flex items-start justify-between mb-1">
-                <p className="text-xs text-gray-500 uppercase tracking-widest">
-                  Lead {index + 1} of {leads.length}
+            {wrapup ? (
+              /* ── Disposition picker ── */
+              <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
+                <p className="text-white font-semibold text-base mb-0.5">
+                  {wrapup.lead.company_name || [wrapup.lead.first_name, wrapup.lead.last_name].filter(Boolean).join(' ') || wrapup.lead.name}
                 </p>
-                {lead.status && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-400">{lead.status}</span>
-                )}
+                <p className="text-gray-500 text-sm mb-5">Select a disposition</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {DISPOSITIONS.map(({ label, color }) => (
+                    <button
+                      key={label}
+                      onClick={() => saveDisposition(label)}
+                      className={`${color} text-white text-sm font-medium py-2.5 rounded-lg transition-colors`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
+            ) : (
+              /* ── Lead preview card ── */
+              <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
+                <div className="flex items-start justify-between mb-1">
+                  <p className="text-xs text-gray-500 uppercase tracking-widest">
+                    Lead {index + 1} of {leads.length}
+                  </p>
+                  {lead.status && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-400">{lead.status}</span>
+                  )}
+                </div>
 
-              <p className="text-white font-semibold text-lg mt-2">{company}</p>
-              {contact && <p className="text-gray-400 text-sm">{contact}</p>}
-              <p className="text-gray-500 text-sm">{lead.phone}</p>
+                <p className="text-white font-semibold text-lg mt-2">{company}</p>
+                {contact && <p className="text-gray-400 text-sm">{contact}</p>}
+                <p className="text-gray-500 text-sm">{lead.phone}</p>
 
-              <div className="border-t border-gray-700 mt-4 pt-4 space-y-2">
-                {lead.email && <Row label="Email" value={lead.email} />}
-                {(lead.city || lead.state) && <Row label="Location" value={[lead.city, lead.state].filter(Boolean).join(', ')} />}
-                {(lead.lead_type_label || lead.lead_type) && <Row label="Type" value={lead.lead_type_label || lead.lead_type!} />}
-                {lead.revenue && <Row label="Revenue" value={lead.revenue} />}
-                {lead.monthly_deposit && <Row label="Monthly Dep." value={lead.monthly_deposit} />}
-                {lead.requested_amount && <Row label="Requested" value={lead.requested_amount} />}
-                {lead.tib && <Row label="Time in Business" value={lead.tib} />}
-                {lead.fico && <Row label="FICO" value={lead.fico} />}
-                {lead.employee_size && <Row label="Employees" value={lead.employee_size} />}
-                {lead.why_funds && <Row label="Why Funds" value={lead.why_funds} />}
+                <div className="border-t border-gray-700 mt-4 pt-4 space-y-2">
+                  {lead.email && <Row label="Email" value={lead.email} />}
+                  {(lead.city || lead.state) && <Row label="Location" value={[lead.city, lead.state].filter(Boolean).join(', ')} />}
+                  {(lead.lead_type_label || lead.lead_type) && <Row label="Type" value={lead.lead_type_label || lead.lead_type!} />}
+                  {lead.revenue && <Row label="Revenue" value={lead.revenue} />}
+                  {lead.monthly_deposit && <Row label="Monthly Dep." value={lead.monthly_deposit} />}
+                  {lead.requested_amount && <Row label="Requested" value={lead.requested_amount} />}
+                  {lead.tib && <Row label="Time in Business" value={lead.tib} />}
+                  {lead.fico && <Row label="FICO" value={lead.fico} />}
+                  {lead.employee_size && <Row label="Employees" value={lead.employee_size} />}
+                  {lead.why_funds && <Row label="Why Funds" value={lead.why_funds} />}
+                </div>
+
+                <div className="flex gap-3 mt-5">
+                  <button
+                    onClick={dial}
+                    disabled={!!activeCall}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white font-semibold rounded-lg transition-colors"
+                  >
+                    <Phone className="w-4 h-4" /> Call
+                  </button>
+                  <button
+                    onClick={skip}
+                    disabled={index >= leads.length - 1 || !!activeCall}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-gray-300 rounded-lg transition-colors text-sm"
+                  >
+                    <SkipForward className="w-4 h-4" /> Skip
+                  </button>
+                </div>
               </div>
-
-              {/* Actions */}
-              <div className="flex gap-3 mt-5">
-                <button
-                  onClick={dial}
-                  disabled={!!activeCall}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white font-semibold rounded-lg transition-colors"
-                >
-                  <Phone className="w-4 h-4" /> Call
-                </button>
-                <button
-                  onClick={skip}
-                  disabled={index >= leads.length - 1 || !!activeCall}
-                  className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-gray-300 rounded-lg transition-colors text-sm"
-                >
-                  <SkipForward className="w-4 h-4" /> Skip
-                </button>
-              </div>
-            </div>
+            )}
 
             {/* Previous dials */}
             {callHistory.length > 0 && (
@@ -137,7 +199,7 @@ export default function DashboardPage() {
                       </span>
                       <div className="flex-1 min-w-0">
                         <p className="text-gray-300 text-sm">{new Date(call.started_at).toLocaleString()}</p>
-                        <p className="text-gray-500 text-xs">{call.status}</p>
+                        <p className="text-gray-500 text-xs">{call.status}{(call as any).disposition ? ` · ${(call as any).disposition}` : ''}</p>
                       </div>
                       {call.duration_seconds != null && (
                         <div className="flex items-center gap-1 text-gray-400 text-xs shrink-0">
