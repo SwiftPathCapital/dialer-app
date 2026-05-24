@@ -1,0 +1,245 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Eye, EyeOff, Save, CheckCircle, XCircle, RefreshCw } from 'lucide-react'
+import { useSoftphone } from '@/lib/SoftphoneContext'
+
+type ConfigStatus = Record<string, { isSet: boolean; updated_at: string | null }>
+
+const SECTIONS = [
+  {
+    title: 'Telnyx',
+    description: 'Connect your Telnyx account for voice and SMS. Find these in the Telnyx Portal.',
+    fields: [
+      {
+        key: 'telnyx_api_key',
+        label: 'API Key',
+        description: 'From Telnyx Portal → Account → Keys & Credentials. Starts with "KEY..."',
+        sensitive: true,
+        placeholder: 'KEY...',
+      },
+      {
+        key: 'telnyx_public_key',
+        label: 'Public Key',
+        description: 'Used to verify incoming webhook signatures. Found in API Keys page.',
+        sensitive: true,
+        placeholder: 'phk_...',
+      },
+      {
+        key: 'telnyx_sip_connection_id',
+        label: 'SIP Connection ID',
+        description: 'From Telnyx Portal → Voice → SIP Connections. Required for agent softphones.',
+        sensitive: false,
+        placeholder: '1234567890123456789',
+      },
+    ],
+  },
+  {
+    title: 'Application',
+    description: 'General settings for this dialer deployment.',
+    fields: [
+      {
+        key: 'app_url',
+        label: 'App URL',
+        description: 'The public URL of this dialer (e.g. https://dialer.yourapp.up.railway.app). Used for Telnyx webhook callbacks.',
+        sensitive: false,
+        placeholder: 'https://your-dialer.up.railway.app',
+      },
+    ],
+  },
+]
+
+export default function ConfigPage() {
+  const { agent, agentLoading } = useSoftphone()
+  const router = useRouter()
+
+  const [status, setStatus] = useState<ConfigStatus>({})
+  const [values, setValues] = useState<Record<string, string>>({})
+  const [show, setShow] = useState<Record<string, boolean>>({})
+  const [saving, setSaving] = useState<Record<string, boolean>>({})
+  const [saved, setSaved] = useState<Record<string, boolean>>({})
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (agentLoading) return
+    if (!agent) { router.push('/login'); return }
+    loadStatus()
+  }, [agent, router])
+
+  async function loadStatus() {
+    setLoading(true)
+    const res = await fetch('/api/config')
+    const data = await res.json()
+    setStatus(data)
+    setLoading(false)
+  }
+
+  function set(key: string, value: string) {
+    setValues(prev => ({ ...prev, [key]: value }))
+    setSaved(prev => ({ ...prev, [key]: false }))
+  }
+
+  async function saveSection(keys: string[]) {
+    const sectionKey = keys.join(',')
+    setSaving(prev => ({ ...prev, [sectionKey]: true }))
+
+    const payload: Record<string, string> = {}
+    for (const key of keys) {
+      if (values[key] !== undefined && values[key] !== '') {
+        payload[key] = values[key]
+      }
+    }
+
+    if (Object.keys(payload).length > 0) {
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+    }
+
+    // Clear the input values and refresh status
+    setValues(prev => {
+      const next = { ...prev }
+      keys.forEach(k => delete next[k])
+      return next
+    })
+
+    await loadStatus()
+    setSaving(prev => ({ ...prev, [sectionKey]: false }))
+    setSaved(prev => ({ ...prev, [sectionKey]: true }))
+    setTimeout(() => setSaved(prev => ({ ...prev, [sectionKey]: false })), 3000)
+  }
+
+  if (!agent) return null
+
+  return (
+    <div className="p-6 max-w-2xl">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Configuration</h1>
+          <p className="text-gray-400 text-sm mt-0.5">Manage API keys and integration settings</p>
+        </div>
+        <button
+          onClick={loadStatus}
+          className="flex items-center gap-2 text-gray-400 hover:text-white text-sm transition-colors"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="space-y-6">
+          {[1, 2].map(i => (
+            <div key={i} className="bg-gray-800 rounded-xl p-6 border border-gray-700 animate-pulse h-48" />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {SECTIONS.map(section => {
+            const sectionKey = section.fields.map(f => f.key).join(',')
+            const isSaving = saving[sectionKey]
+            const isSaved = saved[sectionKey]
+            const hasChanges = section.fields.some(f => values[f.key] !== undefined && values[f.key] !== '')
+
+            return (
+              <div key={section.title} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                {/* Section header */}
+                <div className="px-6 py-4 border-b border-gray-700">
+                  <h2 className="text-white font-semibold">{section.title}</h2>
+                  <p className="text-gray-400 text-sm mt-0.5">{section.description}</p>
+                </div>
+
+                {/* Fields */}
+                <div className="divide-y divide-gray-700">
+                  {section.fields.map(field => {
+                    const info = status[field.key]
+                    const isSet = info?.isSet
+                    const inputVal = values[field.key] ?? ''
+
+                    return (
+                      <div key={field.key} className="px-6 py-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <label className="text-white text-sm font-medium">{field.label}</label>
+                              {isSet ? (
+                                <span className="flex items-center gap-1 text-xs text-green-400">
+                                  <CheckCircle className="w-3 h-3" /> Set
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-xs text-gray-500">
+                                  <XCircle className="w-3 h-3" /> Not set
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-gray-500 text-xs mt-0.5 max-w-md">{field.description}</p>
+                          </div>
+                          {info?.updated_at && (
+                            <span className="text-gray-600 text-xs shrink-0 ml-4">
+                              Updated {new Date(info.updated_at).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="relative mt-2">
+                          <input
+                            type={field.sensitive && !show[field.key] ? 'password' : 'text'}
+                            value={inputVal}
+                            onChange={e => set(field.key, e.target.value)}
+                            placeholder={isSet ? '••••••••  (leave blank to keep current)' : field.placeholder}
+                            className="w-full bg-gray-900 text-white text-sm rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600 pr-10"
+                          />
+                          {field.sensitive && (
+                            <button
+                              type="button"
+                              onClick={() => setShow(prev => ({ ...prev, [field.key]: !prev[field.key] }))}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                            >
+                              {show[field.key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Save button */}
+                <div className="px-6 py-4 bg-gray-900/30 flex items-center justify-between">
+                  <span className={`text-sm transition-all ${isSaved ? 'text-green-400' : 'text-transparent'}`}>
+                    Saved successfully
+                  </span>
+                  <button
+                    onClick={() => saveSection(section.fields.map(f => f.key))}
+                    disabled={isSaving || !hasChanges}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    {isSaving ? (
+                      <><RefreshCw className="w-4 h-4 animate-spin" /> Saving...</>
+                    ) : (
+                      <><Save className="w-4 h-4" /> Save {section.title}</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+
+          {/* Info box about Supabase */}
+          <div className="bg-blue-950/40 border border-blue-800/50 rounded-xl p-5">
+            <p className="text-blue-300 text-sm font-medium mb-1">Supabase credentials</p>
+            <p className="text-blue-400/70 text-xs">
+              Supabase URL and keys must be set as environment variables on your Railway deployment
+              (or in <code className="bg-blue-900/40 px-1 rounded">.env.local</code> for local dev)
+              because they're needed before the app can start. Once those are set, all other settings
+              above are stored securely in your Supabase database.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
