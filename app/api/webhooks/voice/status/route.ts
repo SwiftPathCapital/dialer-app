@@ -49,8 +49,9 @@ export async function POST(req: NextRequest) {
             .in('id', agentIds)
             .not('voicemail_greeting_url', 'is', null)
             .limit(1)
-          if (agentsWithGreeting?.[0]?.voicemail_greeting_url) {
-            greetingXml = `<Play>${agentsWithGreeting[0].voicemail_greeting_url}</Play>`
+          const gUrl = agentsWithGreeting?.[0]?.voicemail_greeting_url
+          if (gUrl && !gUrl.endsWith('.webm')) {
+            greetingXml = `<Play>${gUrl}</Play>`
           }
         }
         return texml(`${greetingXml}\n  <Record maxLength="120" recordingStatusCallback="${BASE_URL}/api/webhooks/voice/recording"/>`)
@@ -66,8 +67,9 @@ export async function POST(req: NextRequest) {
         .eq('id', call.agent_id)
         .single()
 
-      const greetingXml = agent?.voicemail_greeting_url
-        ? `<Play>${agent.voicemail_greeting_url}</Play>`
+      const url = agent?.voicemail_greeting_url
+      const greetingXml = url && !url.endsWith('.webm')
+        ? `<Play>${url}</Play>`
         : `<Say>Please leave a message after the beep.</Say>`
 
       return texml(`${greetingXml}\n  <Record maxLength="120" recordingStatusCallback="${BASE_URL}/api/webhooks/voice/recording"/>`)

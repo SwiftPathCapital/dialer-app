@@ -19,7 +19,11 @@ export default function VoicemailGreeting() {
 
   async function startRecording() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    const mr = new MediaRecorder(stream)
+    // Prefer OGG (Telnyx-compatible); fall back to whatever the browser supports
+    const mimeType = MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+      ? 'audio/ogg;codecs=opus'
+      : 'audio/webm;codecs=opus'
+    const mr = new MediaRecorder(stream, { mimeType })
     chunksRef.current = []
     mr.ondataavailable = e => chunksRef.current.push(e.data)
     mr.onstop = () => {
