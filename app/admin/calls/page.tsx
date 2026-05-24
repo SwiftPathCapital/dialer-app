@@ -13,6 +13,7 @@ interface CallRow {
   status: string
   disposition: string | null
   duration_seconds: number | null
+  recording_url: string | null
   started_at: string
   agents: { id: string; name: string; email: string } | null
 }
@@ -167,6 +168,7 @@ export default function AdminCallsPage() {
                       {fmt(call.duration_seconds)}
                     </div>
                   )}
+                  {call.recording_url && <AudioPlayer url={call.recording_url} />}
                 </div>
               ))}
             </div>
