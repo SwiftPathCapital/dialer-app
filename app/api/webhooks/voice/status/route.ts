@@ -26,35 +26,52 @@ export async function POST(req: NextRequest) {
       ended_at: new Date().toISOString(),
     })
     .eq('telnyx_call_control_id', callSid)
-    .select('group_id')
+    .select('group_id, agent_id')
     .single()
 
-  if (dialStatus !== 'completed' && call?.group_id) {
-    const [{ data: group }, { data: members }, BASE_URL] = await Promise.all([
-      db.from('inbound_groups').select('voicemail_enabled').eq('id', call.group_id).single(),
-      db.from('inbound_group_members').select('agent_id').eq('group_id', call.group_id),
-      getAppUrl(),
-    ])
+  if (dialStatus !== 'completed') {
+    const BASE_URL = await getAppUrl()
 
-    if (group?.voicemail_enabled) {
-      let greetingXml = `<Say>Please leave a message after the beep.</Say>`
+    // --- Group voicemail ---
+    if (call?.group_id) {
+      const [{ data: group }, { data: members }] = await Promise.all([
+        db.from('inbound_groups').select('voicemail_enabled').eq('id', call.group_id).single(),
+        db.from('inbound_group_members').select('agent_id').eq('group_id', call.group_id),
+      ])
 
-      if (members?.length) {
-        const agentIds = members.map((m: { agent_id: string }) => m.agent_id)
-        const { data: agentsWithGreeting } = await db
-          .from('agents')
-          .select('voicemail_greeting_url')
-          .in('id', agentIds)
-          .not('voicemail_greeting_url', 'is', null)
-          .limit(1)
-        if (agentsWithGreeting?.[0]?.voicemail_greeting_url) {
-          greetingXml = `<Play>${agentsWithGreeting[0].voicemail_greeting_url}</Play>`
+      if (group?.voicemail_enabled) {
+        let greetingXml = `<Say>Please leave a message after the beep.</Say>`
+        if (members?.length) {
+          const agentIds = members.map((m: { agent_id: string }) => m.agent_id)
+          const { data: agentsWithGreeting } = await db
+            .from('agents')
+            .select('voicemail_greeting_url')
+            .in('id', agentIds)
+            .not('voicemail_greeting_url', 'is', null)
+            .limit(1)
+          if (agentsWithGreeting?.[0]?.voicemail_greeting_url) {
+            greetingXml = `<Play>${agentsWithGreeting[0].voicemail_greeting_url}</Play>`
+          }
         }
+        return texml(`${greetingXml}\n  <Record maxLength="120" recordingStatusCallback="${BASE_URL}/api/webhooks/voice/recording"/>`)
       }
+      return texml(`<Say>No agents are available. Goodbye.</Say>`)
+    }
+
+    // --- Direct agent line voicemail ---
+    if (call?.agent_id) {
+      const { data: agent } = await db
+        .from('agents')
+        .select('voicemail_greeting_url')
+        .eq('id', call.agent_id)
+        .single()
+
+      const greetingXml = agent?.voicemail_greeting_url
+        ? `<Play>${agent.voicemail_greeting_url}</Play>`
+        : `<Say>Please leave a message after the beep.</Say>`
 
       return texml(`${greetingXml}\n  <Record maxLength="120" recordingStatusCallback="${BASE_URL}/api/webhooks/voice/recording"/>`)
     }
-    return texml(`<Say>No agents are available. Goodbye.</Say>`)
   }
 
   return new NextResponse('', { status: 200 })
