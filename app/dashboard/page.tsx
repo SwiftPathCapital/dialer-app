@@ -2,10 +2,10 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Phone, Search, Building2, ChevronRight } from 'lucide-react'
+import { Search, Building2, ChevronRight, Phone } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import Dialpad from '@/components/Dialpad'
-import ActiveCall from '@/components/ActiveCall'
+import LeadPanel from '@/components/LeadPanel'
 import StatusSelector from '@/components/StatusSelector'
 import VoicemailGreeting from '@/components/VoicemailGreeting'
 import { Lead } from '@/lib/types'
@@ -16,7 +16,7 @@ export default function DashboardPage() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [search, setSearch] = useState('')
   const [leadsLoading, setLeadsLoading] = useState(true)
-  const [activeLead, setActiveLead] = useState<Lead | null>(null)
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -44,7 +44,7 @@ export default function DashboardPage() {
   function dial(lead: Lead) {
     if (!lead.phone) return
     const e164 = lead.phone.replace(/\D/g, '').replace(/^1?(\d{10})$/, '+1$1')
-    setActiveLead(lead)
+    setSelectedLead(lead)
     makeCall(e164)
   }
 
@@ -61,11 +61,16 @@ export default function DashboardPage() {
       </div>
 
       <div className="flex flex-wrap gap-6">
-        {/* Left: dialpad + active call */}
+        {/* Left: lead panel when selected, otherwise dialpad */}
         <div className="space-y-4">
-          <ActiveCall lead={activeLead} />
-          <Dialpad />
-          <VoicemailGreeting />
+          {selectedLead ? (
+            <LeadPanel lead={selectedLead} onClose={() => setSelectedLead(null)} />
+          ) : (
+            <>
+              <Dialpad />
+              <VoicemailGreeting />
+            </>
+          )}
         </div>
 
         {/* Right: preview dialer */}
@@ -90,22 +95,20 @@ export default function DashboardPage() {
           ) : leads.length === 0 ? (
             <p className="text-gray-600 text-sm">No leads found</p>
           ) : (
-            <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-280px)]">
+            <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-220px)]">
               {leads.map(lead => {
                 const company = lead.company_name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.name || 'Unknown'
                 const contact = lead.company_name ? [lead.first_name, lead.last_name].filter(Boolean).join(' ') : null
-                const isActive = activeLead?.id === lead.id
+                const isSelected = selectedLead?.id === lead.id
 
                 return (
                   <div
                     key={lead.id}
                     className={`flex items-center gap-3 rounded-xl px-4 py-3 border transition-colors ${
-                      isActive
-                        ? 'bg-blue-900/30 border-blue-600'
-                        : 'bg-gray-800 border-gray-700 hover:border-gray-600'
+                      isSelected ? 'bg-blue-900/30 border-blue-600' : 'bg-gray-800 border-gray-700 hover:border-gray-600'
                     }`}
                   >
-                    <div className={`p-2 rounded-full shrink-0 ${isActive ? 'bg-blue-700/40 text-blue-300' : 'bg-gray-700 text-gray-400'}`}>
+                    <div className={`p-2 rounded-full shrink-0 ${isSelected ? 'bg-blue-700/40 text-blue-300' : 'bg-gray-700 text-gray-400'}`}>
                       <Building2 className="w-4 h-4" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -124,11 +127,11 @@ export default function DashboardPage() {
                       <button
                         onClick={() => dial(lead)}
                         className={`flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors shrink-0 ${
-                          isActive ? 'bg-blue-600 hover:bg-blue-500' : 'bg-green-700 hover:bg-green-600'
+                          isSelected ? 'bg-blue-600 hover:bg-blue-500' : 'bg-green-700 hover:bg-green-600'
                         }`}
                       >
                         <Phone className="w-3.5 h-3.5" />
-                        {isActive ? 'Calling' : 'Call'}
+                        {isSelected ? 'Active' : 'Call'}
                       </button>
                     ) : (
                       <ChevronRight className="w-4 h-4 text-gray-600 shrink-0" />

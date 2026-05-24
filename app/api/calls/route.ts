@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabase'
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const agentId = searchParams.get('agent_id')
+  const toNumber = searchParams.get('to_number')
   const limit = parseInt(searchParams.get('limit') || '50')
 
   const db = createServerClient()
@@ -24,7 +25,9 @@ export async function GET(req: NextRequest) {
     .order('started_at', { ascending: false })
     .limit(limit)
 
-  if (agentId && groupIds.length > 0) {
+  if (toNumber) {
+    query = query.ilike('to_number', `%${toNumber}%`)
+  } else if (agentId && groupIds.length > 0) {
     query = query.or(`agent_id.eq.${agentId},group_id.in.(${groupIds.join(',')})`)
   } else if (agentId) {
     query = query.eq('agent_id', agentId)
