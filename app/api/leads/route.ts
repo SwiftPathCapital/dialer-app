@@ -1,0 +1,29 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createServerClient } from '@/lib/supabase'
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const agentId = searchParams.get('agent_id')
+  const search = searchParams.get('search') || ''
+  const limit = parseInt(searchParams.get('limit') || '100')
+
+  const db = createServerClient()
+
+  let query = db
+    .from('leads')
+    .select('id, name, first_name, last_name, phone, company_name, email, state, city, status, lead_type, lead_type_label, assigned_to, created_at, revenue, monthly_deposit, requested_amount, tib, fico, employee_size, why_funds')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (agentId) {
+    query = query.or(`assigned_to.eq.${agentId},assigned_to.is.null`)
+  }
+
+  if (search) {
+    query = query.or(`company_name.ilike.%${search}%,name.ilike.%${search}%,phone.ilike.%${search}%`)
+  }
+
+  const { data, error } = await query
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data)
+}

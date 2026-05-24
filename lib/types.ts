@@ -50,6 +50,30 @@ export interface Voicemail {
   created_at: string
 }
 
+export interface Lead {
+  id: string
+  name: string | null
+  first_name: string | null
+  last_name: string | null
+  phone: string | null
+  company_name: string | null
+  email: string | null
+  state: string | null
+  city: string | null
+  status: string | null
+  lead_type: string | null
+  lead_type_label: string | null
+  assigned_to: string | null
+  created_at: string
+  revenue: string | null
+  monthly_deposit: string | null
+  requested_amount: string | null
+  tib: string | null
+  fico: string | null
+  employee_size: string | null
+  why_funds: string | null
+}
+
 export interface SMSConversation {
   id: string
   contact_number: string
