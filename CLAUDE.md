@@ -1,5 +1,27 @@
 # SwiftPath Dialer — Claude Code Context
 
+---
+
+## ⛔ RULES — Read before doing anything
+
+These rules exist because a previous Claude session broke the live CRM by making database changes without understanding the shared schema. Follow them exactly.
+
+### Database rules
+1. **Never DROP, CREATE, or TRUNCATE any table** without explicit user confirmation. Even `CREATE TABLE IF NOT EXISTS` on an existing table can reset RLS policies and wipe foreign key relationships.
+2. **Never run `schema.sql` again** as a whole file — it is a one-time setup document. Running it again will attempt to recreate tables and realtime subscriptions that already exist, causing errors and potentially data loss.
+3. **Never touch the `agents` table structure** — no DROP, no TRUNCATE, no removing columns. See the detailed rules below.
+4. **Never alter RLS policies on shared tables** (`agents`, `leads`, `calls`, `sms_conversations`, `sms_messages`) without checking with the user first. The CRM depends on these policies for access control.
+5. **Before any schema change** (new table, new column, new index, new policy): check what already exists using the Supabase MCP. Do not assume the database matches `schema.sql` — the live database has been modified since that file was written.
+6. **Never insert or delete rows in `agents` directly.** Agent creation and deletion must go through the CRM (see below).
+
+### Code rules
+7. **Never change environment variable names** in `.env.local` or `next.config.ts`. The app is deployed on Railway — renaming a var breaks production silently.
+8. **Never modify the Telnyx webhook routes** (`app/api/webhooks/`) without understanding the full TeXML call flow documented below. These handle live calls; a bug here drops active calls for all agents.
+9. **Do not install new packages without confirming with the user.** The dialer shares a Railway deployment budget — unnecessary deps increase build time and memory.
+10. **Do not push to git or deploy** unless the user explicitly asks. Propose the change, wait for approval.
+
+---
+
 ## What this project is
 A standalone browser-based dialer app for SwiftPath Capital agents. Separate from the Electron CRM (crm-skeleton / Apex CRM) but shares the same Supabase project. Deployed on Railway.
 
@@ -37,6 +59,38 @@ This Supabase project is shared with the Apex CRM. Several table names overlap. 
 - `sms_conversations`, `sms_messages` — created by the dialer schema; CRM does not use these.
 
 Before adding any new table, run `list_tables` via the Supabase MCP to check for conflicts.
+
+### ⚠️ CRITICAL — agents table is shared with the CRM. Read before touching it.
+The `agents` table is **owned by the CRM** and must never be dropped, truncated, or recreated. Doing so will break the live CRM for all users (this already happened once and took hours to fix).
+
+**Rules:**
+- **NEVER** run `DROP TABLE agents`, `CREATE TABLE agents`, or `TRUNCATE agents`
+- **NEVER** remove columns from `agents`
+- To add dialer-specific columns: `ALTER TABLE agents ADD COLUMN IF NOT EXISTS ...` only
+- `schema.sql` already follows this pattern — keep it that way
+
+**Column ownership:**
+
+| Column | Owner |
+|---|---|
+| `id` | CRM — must equal the Supabase `auth.users.id` for each agent |
+| `role` | CRM — `'admin'` or `'agent'`, drives sidebar and RLS policies |
+| `did` | CRM — agent's outbound phone number |
+| `sip_username`, `sip_password` | Shared — both apps use these for Telnyx |
+| `name`, `email` | Shared |
+| `status`, `extension`, `sip_connection_id`, `voicemail_greeting_url`, `updated_at` | Dialer |
+
+**Current agents (do not delete these rows):**
+
+| Name | Email | Role |
+|---|---|---|
+| Jordan Bosh | submissions@swiftpathtocapital.com | admin |
+| Keith Williams | keith.williams@swiftpathtocapital.com | agent |
+| Brent | william.primus@swiftpathtocapital.com | agent |
+
+The CRM's RLS policies use `auth.uid() = agents.id` — so every agent row's `id` must match a real Supabase auth user.
+
+**Agent creation must go through the CRM** (`POST /api/agents/create` on the CRM's Express server). That endpoint creates the Supabase auth user and the agents row atomically using the service role key. Do not add agents by inserting directly into the `agents` table or via the dialer's own admin UI — doing so produces a row with a generated UUID that won't match any auth user, breaking CRM login for that agent.
 
 ## Environment variables
 Supabase credentials go in `.env.local`. Telnyx keys are stored in the `app_config` Supabase table and managed via the `/admin/config` page — no redeploy needed to update them.

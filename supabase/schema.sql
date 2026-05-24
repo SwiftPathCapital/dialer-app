@@ -1,91 +1,99 @@
--- Run this in your Supabase SQL editor
+-- ============================================================
+-- SwiftPath Dialer — database schema
+-- Run this ONCE in the Supabase SQL Editor.
+-- The `agents` table already exists (shared with the CRM).
+-- This script only ADDS dialer-specific columns and creates
+-- the dialer-only tables. It is safe to re-run.
+-- ============================================================
 
--- Agents table (individual softphones)
-create table if not exists agents (
-  id          uuid primary key default gen_random_uuid(),
-  name        text not null,
-  email       text unique not null,
-  sip_username text unique,        -- Telnyx SIP credential username
-  sip_password text,               -- Telnyx SIP credential password
-  sip_connection_id text,          -- Telnyx credential connection ID (used to build SIP URI: username@<id>.sip.telnyx.com)
-  extension   text,
-  status      text check (status in ('available', 'busy', 'offline')) default 'offline',
-  updated_at  timestamptz default now()
+-- ── Extend the shared agents table with dialer columns ────────────────────────
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS sip_connection_id    text;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS extension            text;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS status               text
+  CHECK (status IN ('available', 'busy', 'offline')) DEFAULT 'offline';
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS updated_at           timestamptz DEFAULT now();
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS voicemail_greeting_url text;
+
+-- ── Inbound routing groups ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS inbound_groups (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name             text NOT NULL,
+  phone_number     text UNIQUE,
+  voicemail_enabled boolean DEFAULT true,
+  created_at       timestamptz DEFAULT now()
 );
 
--- Inbound routing groups
-create table if not exists inbound_groups (
-  id               uuid primary key default gen_random_uuid(),
-  name             text not null,
-  phone_number     text unique,    -- Telnyx DID assigned to this group
-  voicemail_enabled boolean default true,
-  created_at       timestamptz default now()
+-- ── Group membership ──────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS inbound_group_members (
+  group_id  uuid REFERENCES inbound_groups(id) ON DELETE CASCADE,
+  agent_id  uuid REFERENCES agents(id)         ON DELETE CASCADE,
+  PRIMARY KEY (group_id, agent_id)
 );
 
--- Group membership
-create table if not exists inbound_group_members (
-  group_id  uuid references inbound_groups(id) on delete cascade,
-  agent_id  uuid references agents(id) on delete cascade,
-  primary key (group_id, agent_id)
+-- ── Call log (separate from CRM's `calls` table) ─────────────────────────────
+CREATE TABLE IF NOT EXISTS dialer_calls (
+  id                     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  direction              text CHECK (direction IN ('inbound', 'outbound')),
+  from_number            text,
+  to_number              text,
+  agent_id               uuid REFERENCES agents(id),
+  group_id               uuid REFERENCES inbound_groups(id),
+  status                 text,
+  duration_seconds       int,
+  telnyx_call_control_id text,
+  started_at             timestamptz DEFAULT now(),
+  ended_at               timestamptz
 );
 
--- Call log (dialer_calls avoids conflict with the CRM's calls table)
-create table if not exists dialer_calls (
-  id                       uuid primary key default gen_random_uuid(),
-  direction                text check (direction in ('inbound', 'outbound')),
-  from_number              text,
-  to_number                text,
-  agent_id                 uuid references agents(id),
-  group_id                 uuid references inbound_groups(id),
-  status                   text,
-  duration_seconds         int,
-  telnyx_call_control_id   text,
-  started_at               timestamptz default now(),
-  ended_at                 timestamptz
-);
-
--- Voicemails
-create table if not exists voicemails (
-  id            uuid primary key default gen_random_uuid(),
-  call_id       uuid references calls(id),
-  group_id      uuid references inbound_groups(id),
+-- ── Voicemails ────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS voicemails (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  call_id       uuid REFERENCES dialer_calls(id),
+  group_id      uuid REFERENCES inbound_groups(id),
   from_number   text,
   recording_url text,
   transcription text,
-  listened      boolean default false,
-  created_at    timestamptz default now()
+  listened      boolean DEFAULT false,
+  created_at    timestamptz DEFAULT now()
 );
 
--- SMS conversations (one per contact + our_number pair)
-create table if not exists sms_conversations (
-  id              uuid primary key default gen_random_uuid(),
-  contact_number  text not null,
-  our_number      text not null,
-  group_id        uuid references inbound_groups(id),
+-- ── SMS conversations ─────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS sms_conversations (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  contact_number  text NOT NULL,
+  our_number      text NOT NULL,
+  group_id        uuid REFERENCES inbound_groups(id),
   last_message_at timestamptz,
-  unique(contact_number, our_number)
+  UNIQUE(contact_number, our_number)
 );
 
--- Individual SMS messages
-create table if not exists sms_messages (
-  id                  uuid primary key default gen_random_uuid(),
-  conversation_id     uuid references sms_conversations(id) on delete cascade,
-  direction           text check (direction in ('inbound', 'outbound')),
-  body                text,
-  telnyx_message_id   text,
-  sent_at             timestamptz default now()
+-- ── SMS messages ──────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS sms_messages (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id   uuid REFERENCES sms_conversations(id) ON DELETE CASCADE,
+  direction         text CHECK (direction IN ('inbound', 'outbound')),
+  body              text,
+  telnyx_message_id text,
+  sent_at           timestamptz DEFAULT now()
 );
 
--- App configuration (Telnyx keys, app URL — managed via /admin/config)
-create table if not exists app_config (
-  key        text primary key,
-  value      text not null,
-  updated_at timestamptz default now()
+-- ── App config (Telnyx keys, managed via /admin/config) ──────────────────────
+CREATE TABLE IF NOT EXISTS app_config (
+  key        text PRIMARY KEY,
+  value      text,
+  updated_at timestamptz DEFAULT now()
 );
 
--- Enable Realtime for live updates
-alter publication supabase_realtime add table sms_messages;
-alter publication supabase_realtime add table sms_conversations;
-alter publication supabase_realtime add table voicemails;
-alter publication supabase_realtime add table dialer_calls;
-alter publication supabase_realtime add table agents;
+INSERT INTO app_config (key, value) VALUES
+  ('telnyx_api_key',           null),
+  ('telnyx_public_key',        null),
+  ('telnyx_sip_connection_id', null),
+  ('app_url',                  null)
+ON CONFLICT (key) DO NOTHING;
+
+-- ── Realtime ──────────────────────────────────────────────────────────────────
+ALTER PUBLICATION supabase_realtime ADD TABLE sms_messages;
+ALTER PUBLICATION supabase_realtime ADD TABLE sms_conversations;
+ALTER PUBLICATION supabase_realtime ADD TABLE voicemails;
+ALTER PUBLICATION supabase_realtime ADD TABLE dialer_calls;
+ALTER PUBLICATION supabase_realtime ADD TABLE agents;
