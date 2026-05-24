@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff } from 'lucide-react'
+import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 
 const NAV = [
@@ -12,6 +12,7 @@ const NAV = [
 ]
 
 const ADMIN_NAV = [
+  { href: '/admin/calls', icon: PhoneCall, label: 'Call Center' },
   { href: '/admin/groups', icon: Users, label: 'Groups' },
   { href: '/admin/config', icon: SlidersHorizontal, label: 'Config' },
 ]
