@@ -12,6 +12,7 @@ export async function GET() {
     db.from('dialer_calls')
       .select('agent_id, group_id, direction, from_number, to_number, status, started_at, telnyx_call_control_id')
       .in('status', ['initiated', 'ringing', 'active'])
+      .gte('started_at', new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString())
       .order('started_at', { ascending: false }),
     db.from('dialer_calls')
       .select('agent_id')
