@@ -186,16 +186,16 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
           } else if (call.state === 'active') {
             stopRing()
             setActiveCall(prev => {
-              // Attribute group call to this agent now that they've answered
-              if (prev?.groupName && agent) {
+              // Attribute inbound call to this agent now that they've answered
+              if (prev?.direction === 'inbound' && agent) {
                 fetch('/api/calls', {
                   method: 'PATCH',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     action: 'answer',
                     agentId: agent.id,
-                    groupName: prev.groupName,
                     remoteNumber: prev.remoteNumber.replace(/\D/g, ''),
+                    groupName: prev.groupName, // optional — used to narrow the match
                   }),
                 }).catch(() => {})
               }

@@ -48,26 +48,31 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json()
   const db = createServerClient()
 
-  // When an agent answers a group call, attribute it to them
+  // When an agent answers an inbound call, attribute it to them
   if (body.action === 'answer') {
-    const { agentId, groupName, remoteNumber } = body
+    const { agentId, remoteNumber, groupName } = body
 
-    const { data: group } = await db
-      .from('inbound_groups')
-      .select('id')
-      .eq('name', groupName)
-      .single()
+    // Match any ringing unattributed call from this number — works for both
+    // group calls (agent_id is null) and as a no-op for direct calls (agent_id already set)
+    let query = db
+      .from('dialer_calls')
+      .update({ agent_id: agentId, status: 'active' })
+      .ilike('from_number', `%${remoteNumber}%`)
+      .in('status', ['ringing', 'initiated'])
+      .is('ended_at', null)
+      .is('agent_id', null)
 
-    if (group) {
-      await db
-        .from('dialer_calls')
-        .update({ agent_id: agentId, status: 'active' })
-        .eq('group_id', group.id)
-        .ilike('from_number', `%${remoteNumber}%`)
-        .in('status', ['ringing', 'initiated'])
-        .is('ended_at', null)
+    // Narrow to the specific group if we have the name (avoids matching unrelated calls)
+    if (groupName) {
+      const { data: group } = await db
+        .from('inbound_groups')
+        .select('id')
+        .eq('name', groupName)
+        .single()
+      if (group) query = query.eq('group_id', group.id)
     }
 
+    await query
     return NextResponse.json({ ok: true })
   }
 
