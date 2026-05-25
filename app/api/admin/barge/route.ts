@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   const appUrl = appUrlRes.data?.value || process.env.NEXT_PUBLIC_APP_URL || ''
 
   if (!apiKey) return NextResponse.json({ error: 'Telnyx API key not configured in Admin → Config.' }, { status: 500 })
-  if (!connectionId) return NextResponse.json({ error: 'SIP Connection ID not configured in Admin → Config.' }, { status: 500 })
+  if (!connectionId) return NextResponse.json({ error: 'Call Control App ID not configured in Admin → Config.' }, { status: 500 })
   if (!fromNumber) return NextResponse.json({ error: 'No inbound group phone number configured.' }, { status: 500 })
 
   const headers = {
@@ -29,26 +29,9 @@ export async function POST(req: NextRequest) {
     'Content-Type': 'application/json',
   }
 
-  // Step 1: Create conference — this moves the agent's call leg into it
-  const confRes = await fetch('https://api.telnyx.com/v2/conferences', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      name: `monitor-${Date.now()}`,
-      call_control_id,
-      start_conference_on_create: true,
-    }),
-  })
-  const confData = await confRes.json()
-  if (!confRes.ok) {
-    return NextResponse.json({ error: confData.errors?.[0]?.detail || 'Could not create conference.' }, { status: 500 })
-  }
-
-  const conferenceId = confData.data?.id
-  if (!conferenceId) return NextResponse.json({ error: 'No conference ID returned.' }, { status: 500 })
-
-  // Step 2: Dial admin's WebRTC SIP URI — pass conference_id in client_state so the barge-answer webhook can join them
-  const clientState = Buffer.from(JSON.stringify({ conference_id: conferenceId })).toString('base64')
+  // Step 1: Validate the connection_id by doing a dry-run dial FIRST.
+  // We dial admin before touching the live call so a failure here is safe.
+  const clientState = Buffer.from(JSON.stringify({ call_control_id })).toString('base64')
   const adminSipUri = `sip:${admin_sip_username}@sip.telnyx.com`
 
   const dialRes = await fetch('https://api.telnyx.com/v2/calls', {
@@ -67,5 +50,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: dialData.errors?.[0]?.detail || 'Could not call admin.' }, { status: 500 })
   }
 
-  return NextResponse.json({ ok: true, conference_id: conferenceId })
+  return NextResponse.json({ ok: true })
 }
