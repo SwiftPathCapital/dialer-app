@@ -1,9 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, Save, CheckCircle, XCircle, RefreshCw } from 'lucide-react'
+import { Eye, EyeOff, Save, CheckCircle, XCircle, RefreshCw, Upload, Mic } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
+
+type Agent = { id: string; name: string; voicemail_greeting_url: string | null }
 
 type ConfigStatus = Record<string, { isSet: boolean; updated_at: string | null }>
 
@@ -60,12 +62,17 @@ export default function ConfigPage() {
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [saved, setSaved] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [greetingUploading, setGreetingUploading] = useState<Record<string, boolean>>({})
+  const [greetingSaved, setGreetingSaved] = useState<Record<string, boolean>>({})
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   useEffect(() => {
     if (agentLoading) return
     if (!agent) { router.push('/login'); return }
     loadStatus()
-  }, [agent, router])
+    fetch('/api/agents').then(r => r.json()).then(data => { if (Array.isArray(data)) setAgents(data) }).catch(() => {})
+  }, [agent, agentLoading, router])
 
   async function loadStatus() {
     setLoading(true)
@@ -78,6 +85,20 @@ export default function ConfigPage() {
   function set(key: string, value: string) {
     setValues(prev => ({ ...prev, [key]: value }))
     setSaved(prev => ({ ...prev, [key]: false }))
+  }
+
+  async function uploadGreeting(agentId: string, file: File) {
+    setGreetingUploading(prev => ({ ...prev, [agentId]: true }))
+    const form = new FormData()
+    form.append('agentId', agentId)
+    form.append('file', file)
+    const res = await fetch('/api/voicemail/greeting', { method: 'POST', body: form })
+    const data = await res.json()
+    if (!res.ok) { alert(data.error || 'Upload failed'); setGreetingUploading(prev => ({ ...prev, [agentId]: false })); return }
+    setAgents(prev => prev.map(a => a.id === agentId ? { ...a, voicemail_greeting_url: data.url } : a))
+    setGreetingUploading(prev => ({ ...prev, [agentId]: false }))
+    setGreetingSaved(prev => ({ ...prev, [agentId]: true }))
+    setTimeout(() => setGreetingSaved(prev => ({ ...prev, [agentId]: false })), 3000)
   }
 
   async function saveSection(keys: string[]) {
@@ -227,6 +248,47 @@ export default function ConfigPage() {
               </div>
             )
           })}
+
+          {/* Voicemail Greetings */}
+          <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-700">
+              <h2 className="text-white font-semibold flex items-center gap-2"><Mic className="w-4 h-4" /> Voicemail Greetings</h2>
+              <p className="text-gray-400 text-sm mt-0.5">Upload a custom greeting (MP3 or WAV) played before the beep. Max 10 MB.</p>
+            </div>
+            <div className="divide-y divide-gray-700">
+              {agents.map(a => (
+                <div key={a.id} className="px-6 py-4 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-white text-sm font-medium">{a.name}</p>
+                    <p className="text-gray-500 text-xs mt-0.5">
+                      {a.voicemail_greeting_url ? 'Custom greeting set' : 'Using default TTS greeting'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    {greetingSaved[a.id] && <span className="text-green-400 text-xs flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Saved</span>}
+                    {a.voicemail_greeting_url && (
+                      <audio controls src={a.voicemail_greeting_url} className="h-8 w-40" />
+                    )}
+                    <input
+                      type="file"
+                      accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/ogg"
+                      className="hidden"
+                      ref={el => { fileInputRefs.current[a.id] = el }}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) uploadGreeting(a.id, f) }}
+                    />
+                    <button
+                      onClick={() => fileInputRefs.current[a.id]?.click()}
+                      disabled={greetingUploading[a.id]}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-white text-xs rounded-lg transition-colors"
+                    >
+                      {greetingUploading[a.id] ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                      {a.voicemail_greeting_url ? 'Replace' : 'Upload'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
 
           {/* Info box about Supabase */}
           <div className="bg-blue-950/40 border border-blue-800/50 rounded-xl p-5">
