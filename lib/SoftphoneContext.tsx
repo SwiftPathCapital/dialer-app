@@ -40,6 +40,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const clientRef = useRef<any>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const ringTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function startRing(type: 'inbound' | 'outbound') {
     stopRing()
@@ -139,6 +140,17 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
         console.error('Telnyx error', err)
       })
 
+      client.on('telnyx.socket.close', () => {
+        if (!isMounted) return
+        setConnected(false)
+        if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = setTimeout(() => {
+          if (isMounted && clientRef.current) {
+            clientRef.current.connect()
+          }
+        }, 3000)
+      })
+
       client.on('telnyx.notification', (notification: { type: string; call: any }) => {
         if (!isMounted) return
         const { call } = notification
@@ -186,6 +198,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       isMounted = false
+      if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null }
       if (clientRef.current) {
         clientRef.current.disconnect()
         clientRef.current = null
