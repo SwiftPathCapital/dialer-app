@@ -170,8 +170,10 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
         const { call } = notification
         if (notification.type === 'callUpdate') {
           if (call.state === 'ringing') {
+            console.log('[Telnyx] ringing call.options:', JSON.stringify(call.options))
             const callerName: string = call.options?.remoteCallerName || ''
             const groupName = callerName.startsWith('GROUP:') ? callerName.slice(6) : undefined
+            console.log('[Telnyx] callerName:', callerName, '→ groupName:', groupName)
             setActiveCall({
               id: call.id,
               direction: 'inbound',
