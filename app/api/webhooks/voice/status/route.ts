@@ -8,9 +8,16 @@ function texml(content: string) {
   return new NextResponse(`<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n${content}\n</Response>`, { headers: XML })
 }
 
-export async function POST(req: NextRequest) {
-  const text = await req.text()
-  const params = new URLSearchParams(text)
+async function getParams(req: NextRequest): Promise<URLSearchParams> {
+  const contentType = req.headers.get('content-type') || ''
+  if (req.method === 'POST' && contentType.includes('application/x-www-form-urlencoded')) {
+    return new URLSearchParams(await req.text())
+  }
+  return req.nextUrl.searchParams
+}
+
+async function handle(req: NextRequest) {
+  const params = await getParams(req)
 
   const callSid = params.get('CallSid') || ''
   const dialStatus = params.get('DialCallStatus') || ''
@@ -78,3 +85,6 @@ export async function POST(req: NextRequest) {
 
   return texml(`<Hangup/>`)
 }
+
+export async function GET(req: NextRequest) { return handle(req) }
+export async function POST(req: NextRequest) { return handle(req) }
