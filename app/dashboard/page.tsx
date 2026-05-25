@@ -28,6 +28,7 @@ export default function DashboardPage() {
   const [wrapup, setWrapup] = useState<{ lead: Lead } | null>(null)
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
+  const [inboundLead, setInboundLead] = useState<Lead | null>(null)
   const prevCallRef = useRef(activeCall)
 
   useEffect(() => {
@@ -49,6 +50,17 @@ export default function DashboardPage() {
       .then(d => setCallHistory(Array.isArray(d) ? d : []))
       .catch(() => {})
   }, [lead?.id])
+
+  // Look up inbound caller in leads so we show their info instead of the queue lead
+  useEffect(() => {
+    if (!activeCall || activeCall.direction !== 'inbound') { setInboundLead(null); return }
+    const phone = activeCall.remoteNumber.replace(/\D/g, '')
+    if (!phone) return
+    fetch(`/api/leads?phone=${encodeURIComponent(phone)}&limit=1`)
+      .then(r => r.json())
+      .then(d => setInboundLead(Array.isArray(d) && d.length > 0 ? d[0] : null))
+      .catch(() => {})
+  }, [activeCall?.id, activeCall?.direction])
 
   // Detect when a call ends → trigger wrap-up
   useEffect(() => {
@@ -122,7 +134,7 @@ export default function DashboardPage() {
       <div className="flex flex-wrap gap-6">
         {/* Left: softphone */}
         <div className="space-y-4">
-          <ActiveCall lead={lead} />
+          <ActiveCall lead={activeCall?.direction === 'inbound' ? inboundLead : lead} />
           <Dialpad />
           <VoicemailGreeting />
         </div>
