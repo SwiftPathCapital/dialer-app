@@ -170,9 +170,8 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
         const { call } = notification
         if (notification.type === 'callUpdate') {
           if (call.state === 'ringing') {
-            const toDigits = (call.options?.destinationNumber || '').replace(/\D/g, '')
-            const matchedGroup = groupsRef.current.find(g => g.phone_number?.replace(/\D/g, '') === toDigits)
-            const groupName = matchedGroup?.name
+            const callerName: string = call.options?.remoteCallerName || ''
+            const groupName = callerName.startsWith('GROUP:') ? callerName.slice(6) : undefined
             setActiveCall({
               id: call.id,
               direction: 'inbound',

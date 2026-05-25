@@ -63,7 +63,7 @@ async function handle(req: NextRequest) {
       .map((a: { sip_username: string; sip_connection_id: string | null }) => `  <Sip>${agentSipUri(a.sip_username, a.sip_connection_id)}</Sip>`)
       .join('\n')
 
-    return texml(`<Dial timeout="20" action="${BASE_URL}/api/webhooks/voice/status">\n${sipTargets}\n  </Dial>`)
+    return texml(`<Dial callerName="GROUP:${group.name}" timeout="20" action="${BASE_URL}/api/webhooks/voice/status">\n${sipTargets}\n  </Dial>`)
   }
 
   // --- 2. Try direct agent line (extension or did field) ---
