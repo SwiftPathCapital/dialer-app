@@ -183,7 +183,22 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
             startRing(groupName ? 'group-inbound' : 'inbound')
           } else if (call.state === 'active') {
             stopRing()
-            setActiveCall(prev => prev ? { ...prev, state: 'active', telnyxCall: call } : null)
+            setActiveCall(prev => {
+              // Attribute group call to this agent now that they've answered
+              if (prev?.groupName && agent) {
+                fetch('/api/calls', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    action: 'answer',
+                    agentId: agent.id,
+                    groupName: prev.groupName,
+                    remoteNumber: prev.remoteNumber.replace(/\D/g, ''),
+                  }),
+                }).catch(() => {})
+              }
+              return prev ? { ...prev, state: 'active', telnyxCall: call } : null
+            })
             if (call.remoteStream) {
               let audio = document.getElementById('telnyx-remote-audio') as HTMLAudioElement
               if (!audio) {

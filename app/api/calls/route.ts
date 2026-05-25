@@ -44,6 +44,36 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(data)
 }
 
+export async function PATCH(req: NextRequest) {
+  const body = await req.json()
+  const db = createServerClient()
+
+  // When an agent answers a group call, attribute it to them
+  if (body.action === 'answer') {
+    const { agentId, groupName, remoteNumber } = body
+
+    const { data: group } = await db
+      .from('inbound_groups')
+      .select('id')
+      .eq('name', groupName)
+      .single()
+
+    if (group) {
+      await db
+        .from('dialer_calls')
+        .update({ agent_id: agentId, status: 'active' })
+        .eq('group_id', group.id)
+        .ilike('from_number', `%${remoteNumber}%`)
+        .in('status', ['ringing', 'initiated'])
+        .is('ended_at', null)
+    }
+
+    return NextResponse.json({ ok: true })
+  }
+
+  return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const db = createServerClient()
