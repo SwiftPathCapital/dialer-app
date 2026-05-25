@@ -25,8 +25,9 @@ export async function GET() {
   const todayCalls = todayCallsRes.data || []
   const memberships: { agent_id: string; group_id: string }[] = membershipsRes.data || []
 
-  // Group calls (agent_id is null, group_id is set) — ringing all members simultaneously
-  const groupCalls = activeCalls.filter(c => !c.agent_id && c.group_id)
+  // Group calls ringing all members — only show during the actual ring window (dial timeout is 20s)
+  const ringCutoff = new Date(Date.now() - 25 * 1000).toISOString()
+  const groupCalls = activeCalls.filter(c => !c.agent_id && c.group_id && c.started_at > ringCutoff)
 
   const result = agents.map(agent => {
     // Direct call attributed to this agent
