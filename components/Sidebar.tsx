@@ -94,8 +94,9 @@ export default function Sidebar() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'voicemails' }, () => {
         setUnreadVoicemails(prev => prev + 1)
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'voicemails' }, (payload: { new: { listened: boolean }, old: { listened: boolean } }) => {
-        if (payload.new.listened && !payload.old.listened) setUnreadVoicemails(prev => Math.max(0, prev - 1))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'voicemails' }, (payload) => {
+        const p = payload as unknown as { new: { listened: boolean }, old: { listened: boolean } }
+        if (p.new.listened && !p.old.listened) setUnreadVoicemails(prev => Math.max(0, prev - 1))
       })
       .subscribe()
 
