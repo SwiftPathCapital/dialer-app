@@ -4,11 +4,13 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { Agent } from './types'
 
 type CallState = 'idle' | 'ringing' | 'active' | 'held'
+type RingType = 'inbound' | 'outbound' | 'group-inbound'
 
 interface ActiveCall {
   id: string
   direction: 'inbound' | 'outbound'
   remoteNumber: string
+  groupName?: string
   state: CallState
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   telnyxCall: any
@@ -41,38 +43,50 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const audioCtxRef = useRef<AudioContext | null>(null)
   const ringTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const groupsRef = useRef<Array<{ id: string; name: string; phone_number: string }>>([])
 
-  function startRing(type: 'inbound' | 'outbound') {
+  useEffect(() => {
+    if (!agent) return
+    fetch('/api/groups')
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) groupsRef.current = data })
+      .catch(() => {})
+  }, [agent?.id])
+
+  function startRing(type: RingType) {
     stopRing()
     if (typeof window === 'undefined') return
     const ctx = new AudioContext()
     audioCtxRef.current = ctx
 
-    function beep() {
+    function tone(freqs: number[], duration: number) {
       const gain = ctx.createGain()
       gain.gain.value = 0.12
       gain.connect(ctx.destination)
+      freqs.forEach(freq => {
+        const osc = ctx.createOscillator()
+        osc.frequency.value = freq
+        osc.connect(gain)
+        osc.start()
+        osc.stop(ctx.currentTime + duration)
+      })
+    }
 
+    function beep() {
       if (type === 'outbound') {
-        // US ringback: 440Hz + 480Hz
-        ;[440, 480].forEach(freq => {
-          const osc = ctx.createOscillator()
-          osc.frequency.value = freq
-          osc.connect(gain)
-          osc.start()
-          osc.stop(ctx.currentTime + 2)
-        })
+        tone([440, 480], 2)
+        ringTimerRef.current = setTimeout(beep, 6000)
+      } else if (type === 'group-inbound') {
+        // Double ring: ring–pause–ring–long pause, repeat
+        tone([640, 720], 0.8)
+        ringTimerRef.current = setTimeout(() => {
+          tone([640, 720], 0.8)
+          ringTimerRef.current = setTimeout(beep, 4000)
+        }, 1400)
       } else {
-        // Inbound: two-tone ring (480Hz + 620Hz)
-        ;[480, 620].forEach(freq => {
-          const osc = ctx.createOscillator()
-          osc.frequency.value = freq
-          osc.connect(gain)
-          osc.start()
-          osc.stop(ctx.currentTime + 2)
-        })
+        tone([480, 620], 2)
+        ringTimerRef.current = setTimeout(beep, 6000)
       }
-      ringTimerRef.current = setTimeout(beep, 6000)
     }
     beep()
   }
@@ -156,14 +170,18 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
         const { call } = notification
         if (notification.type === 'callUpdate') {
           if (call.state === 'ringing') {
+            const toDigits = (call.options?.destinationNumber || '').replace(/\D/g, '')
+            const matchedGroup = groupsRef.current.find(g => g.phone_number?.replace(/\D/g, '') === toDigits)
+            const groupName = matchedGroup?.name
             setActiveCall({
               id: call.id,
               direction: 'inbound',
               remoteNumber: call.options?.remoteCallerNumber || 'Unknown',
+              groupName,
               state: 'ringing',
               telnyxCall: call,
             })
-            startRing('inbound')
+            startRing(groupName ? 'group-inbound' : 'inbound')
           } else if (call.state === 'active') {
             stopRing()
             setActiveCall(prev => prev ? { ...prev, state: 'active', telnyxCall: call } : null)

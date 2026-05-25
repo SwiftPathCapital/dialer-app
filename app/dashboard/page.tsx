@@ -54,6 +54,7 @@ export default function DashboardPage() {
   // Look up inbound caller in leads so we show their info instead of the queue lead
   useEffect(() => {
     if (!activeCall || activeCall.direction !== 'inbound') { setInboundLead(null); return }
+    setInboundLead(null)  // clear immediately so stale name never shows
     const phone = activeCall.remoteNumber.replace(/\D/g, '')
     if (!phone) return
     fetch(`/api/leads?phone=${encodeURIComponent(phone)}&limit=1`)
