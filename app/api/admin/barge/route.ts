@@ -34,18 +34,23 @@ export async function POST(req: NextRequest) {
   const clientState = Buffer.from(JSON.stringify({ call_control_id })).toString('base64')
   const adminSipUri = `sip:${admin_sip_username}@sip.telnyx.com`
 
+  const dialPayload = {
+    to: adminSipUri,
+    from: fromNumber,
+    connection_id: connectionId,
+    webhook_url: `${appUrl}/api/webhooks/voice/barge-answer`,
+    client_state: clientState,
+  }
+  console.log('[barge] dialing admin:', JSON.stringify(dialPayload))
+
   const dialRes = await fetch('https://api.telnyx.com/v2/calls', {
     method: 'POST',
     headers,
-    body: JSON.stringify({
-      to: adminSipUri,
-      from: fromNumber,
-      connection_id: connectionId,
-      webhook_url: `${appUrl}/api/webhooks/voice/barge-answer`,
-      client_state: clientState,
-    }),
+    body: JSON.stringify(dialPayload),
   })
   const dialData = await dialRes.json()
+  console.log('[barge] telnyx response:', dialRes.status, JSON.stringify(dialData))
+
   if (!dialRes.ok) {
     return NextResponse.json({ error: dialData.errors?.[0]?.detail || 'Could not call admin.' }, { status: 500 })
   }
