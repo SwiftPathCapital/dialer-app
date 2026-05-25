@@ -68,6 +68,8 @@ export default function DashboardPage() {
     const prev = prevCallRef.current
     prevCallRef.current = activeCall
     if (prev && !activeCall && lead) {
+      // Inbound calls that ended while still ringing mean another agent answered — skip dispo
+      if (prev.direction === 'inbound' && prev.state === 'ringing') return
       setWrapup({ lead })
       setNotes('')
     }
