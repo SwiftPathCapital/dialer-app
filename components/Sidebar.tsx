@@ -1,10 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
+import { supabase } from '@/lib/supabase'
 
 const NAV = [
   { href: '/dashboard', icon: Phone, label: 'Softphone' },
@@ -76,6 +77,30 @@ function StatusPicker() {
 export default function Sidebar() {
   const pathname = usePathname()
   const { agent, setAgent, connected } = useSoftphone()
+  const [unreadVoicemails, setUnreadVoicemails] = useState(0)
+
+  useEffect(() => {
+    if (!agent) return
+
+    fetch('/api/voicemail')
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) setUnreadVoicemails(data.filter((v: { listened: boolean }) => !v.listened).length)
+      })
+      .catch(() => {})
+
+    const sub = supabase
+      .channel('sidebar-voicemails')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'voicemails' }, () => {
+        setUnreadVoicemails(prev => prev + 1)
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'voicemails' }, (payload: { new: { listened: boolean }, old: { listened: boolean } }) => {
+        if (payload.new.listened && !payload.old.listened) setUnreadVoicemails(prev => Math.max(0, prev - 1))
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(sub) }
+  }, [agent])
 
   function logout() {
     setAgent(null)
@@ -93,6 +118,7 @@ export default function Sidebar() {
       <nav className="flex-1 py-4 px-2 flex flex-col gap-0.5">
         {NAV.map(({ href, icon: Icon, label }) => {
           const active = pathname === href
+          const badge = href === '/voicemail' && unreadVoicemails > 0 ? unreadVoicemails : 0
           return (
             <Link
               key={href}
@@ -103,7 +129,14 @@ export default function Sidebar() {
                   : 'text-gray-400 hover:text-white hover:bg-gray-700'
               }`}
             >
-              <Icon className="w-5 h-5 shrink-0" />
+              <div className="relative shrink-0">
+                <Icon className="w-5 h-5" />
+                {badge > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                    {badge > 9 ? '9+' : badge}
+                  </span>
+                )}
+              </div>
               <span className="hidden md:block">{label}</span>
             </Link>
           )
