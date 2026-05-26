@@ -99,6 +99,31 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
+  // Start recording on an outbound call leg
+  if (body.action === 'record') {
+    const { callControlId } = body
+    if (!callControlId) return NextResponse.json({ error: 'No callControlId' }, { status: 400 })
+
+    const [apiKeyRes, appUrlRes] = await Promise.all([
+      db.from('app_config').select('value').eq('key', 'telnyx_api_key').single(),
+      db.from('app_config').select('value').eq('key', 'app_url').single(),
+    ])
+    const apiKey = apiKeyRes.data?.value
+    const appUrl = appUrlRes.data?.value || process.env.NEXT_PUBLIC_APP_URL || ''
+    if (apiKey && appUrl) {
+      await fetch(`https://api.telnyx.com/v2/calls/${callControlId}/actions/record_start`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          format: 'mp3',
+          channels: 'dual',
+          webhook_url: `${appUrl}/api/webhooks/voice/call-recording`,
+        }),
+      }).catch(() => {})
+    }
+    return NextResponse.json({ ok: true })
+  }
+
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
 }
 

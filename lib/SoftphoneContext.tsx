@@ -196,8 +196,15 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
                     agentId: agent.id,
                     remoteNumber: prev.remoteNumber.replace(/\D/g, ''),
                     groupName: prev.groupName,
-                    agentCallLegId: call.id, // agent's Telnyx call leg ID for barge
+                    agentCallLegId: call.id,
                   }),
+                }).catch(() => {})
+              } else if (prev?.direction === 'outbound') {
+                // Start recording on outbound calls too
+                fetch('/api/calls', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'record', callControlId: call.id }),
                 }).catch(() => {})
               }
               return prev ? { ...prev, state: 'active', telnyxCall: call } : null

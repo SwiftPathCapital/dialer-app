@@ -16,10 +16,20 @@ async function handle(req: NextRequest) {
 
   const db = createServerClient()
 
-  await db
+  // Inbound: matched by agent_call_leg_id; outbound: matched by telnyx_call_control_id
+  const { data: byLegId } = await db
     .from('dialer_calls')
     .update({ recording_url: recordingUrl })
     .eq('agent_call_leg_id', callControlId)
+    .select('id')
+    .limit(1)
+
+  if (!byLegId?.length) {
+    await db
+      .from('dialer_calls')
+      .update({ recording_url: recordingUrl })
+      .eq('telnyx_call_control_id', callControlId)
+  }
 
   return NextResponse.json({ ok: true })
 }
