@@ -21,6 +21,21 @@ export async function GET(req: NextRequest) {
   } else {
     if (agentId) {
       query = query.or(`assigned_to.eq.${agentId},assigned_to.is.null`)
+
+      // Filter by active lead sources when loading the dialer queue
+      const { data: configRow } = await db
+        .from('app_config')
+        .select('value')
+        .eq('key', 'dialer_lead_sources')
+        .single()
+
+      let activeSources: string[] = []
+      try { activeSources = JSON.parse(configRow?.value ?? '[]') } catch { activeSources = [] }
+
+      if (activeSources.length > 0) {
+        // Supabase .in() doesn't trim, so include all trimmed variants
+        query = query.in('lead_type', activeSources)
+      }
     }
     if (search) {
       query = query.or(`company_name.ilike.%${search}%,name.ilike.%${search}%,phone.ilike.%${search}%`)

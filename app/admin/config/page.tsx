@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, Save, CheckCircle, XCircle, RefreshCw, Upload, Mic } from 'lucide-react'
+import { Eye, EyeOff, Save, CheckCircle, XCircle, RefreshCw, Upload, Mic, Filter } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 
 type Agent = { id: string; name: string; voicemail_greeting_url: string | null }
@@ -67,11 +67,20 @@ export default function ConfigPage() {
   const [greetingSaved, setGreetingSaved] = useState<Record<string, boolean>>({})
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
+  const [leadSourceTypes, setLeadSourceTypes] = useState<string[]>([])
+  const [activeSources, setActiveSources] = useState<string[]>([])
+  const [sourcesSaving, setSourcesSaving] = useState(false)
+  const [sourcesSaved, setSourcesSaved] = useState(false)
+
   useEffect(() => {
     if (agentLoading) return
     if (!agent) { router.push('/login'); return }
     loadStatus()
     fetch('/api/agents').then(r => r.json()).then(data => { if (Array.isArray(data)) setAgents(data) }).catch(() => {})
+    fetch('/api/admin/lead-sources').then(r => r.json()).then(d => {
+      if (Array.isArray(d.types)) setLeadSourceTypes(d.types)
+      if (Array.isArray(d.active)) setActiveSources(d.active)
+    }).catch(() => {})
   }, [agent, agentLoading, router])
 
   async function loadStatus() {
@@ -85,6 +94,25 @@ export default function ConfigPage() {
   function set(key: string, value: string) {
     setValues(prev => ({ ...prev, [key]: value }))
     setSaved(prev => ({ ...prev, [key]: false }))
+  }
+
+  function toggleSource(type: string) {
+    setActiveSources(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    )
+    setSourcesSaved(false)
+  }
+
+  async function saveLeadSources() {
+    setSourcesSaving(true)
+    await fetch('/api/admin/lead-sources', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sources: activeSources }),
+    })
+    setSourcesSaving(false)
+    setSourcesSaved(true)
+    setTimeout(() => setSourcesSaved(false), 3000)
   }
 
   async function uploadGreeting(agentId: string, file: File) {
@@ -248,6 +276,54 @@ export default function ConfigPage() {
               </div>
             )
           })}
+
+          {/* Dialer Lead Sources */}
+          <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-700">
+              <h2 className="text-white font-semibold flex items-center gap-2"><Filter className="w-4 h-4" /> Dialer Lead Sources</h2>
+              <p className="text-gray-400 text-sm mt-0.5">Only leads from checked sources will appear in the agent dialer queue. Uncheck a source to stop agents from seeing those leads.</p>
+            </div>
+            <div className="px-6 py-5">
+              {leadSourceTypes.length === 0 ? (
+                <p className="text-gray-500 text-sm">No lead sources found in the database.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {leadSourceTypes.map(type => {
+                    const on = activeSources.includes(type)
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => toggleSource(type)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                          on
+                            ? 'bg-blue-600 border-blue-500 text-white'
+                            : 'bg-gray-900 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500'
+                        }`}
+                      >
+                        {type}
+                        {on && <span className="ml-2 text-blue-300 text-xs">✓</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {activeSources.length === 0 && leadSourceTypes.length > 0 && (
+                <p className="text-yellow-500 text-xs mt-3">⚠ No sources selected — all leads will be shown.</p>
+              )}
+            </div>
+            <div className="px-6 py-4 bg-gray-900/30 flex items-center justify-between">
+              <span className={`text-sm transition-all ${sourcesSaved ? 'text-green-400' : 'text-transparent'}`}>
+                Saved successfully
+              </span>
+              <button
+                onClick={saveLeadSources}
+                disabled={sourcesSaving}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                {sourcesSaving ? <><RefreshCw className="w-4 h-4 animate-spin" /> Saving...</> : <><Save className="w-4 h-4" /> Save Sources</>}
+              </button>
+            </div>
+          </div>
 
           {/* Voicemail Greetings */}
           <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
