@@ -47,23 +47,28 @@ async function handle(req: NextRequest) {
     const agentIds = (group.inbound_group_members || []).map((m: { agent_id: string }) => m.agent_id)
 
     const { data: agents } = agentIds.length
-      ? await db.from('agents').select('sip_username, sip_connection_id').in('id', agentIds)
+      ? await db.from('agents').select('sip_username, sip_connection_id, status').in('id', agentIds)
       : { data: [] }
+
+    // Only ring agents who are available — offline/busy agents won't have a registered SIP client
+    const availableAgents = (agents ?? []).filter(
+      (a: { status: string }) => a.status === 'available'
+    )
 
     const voicemailXml = group.voicemail_enabled
       ? `<Say>Please leave a message after the beep.</Say>\n  <Record maxLength="120" recordingStatusCallback="${BASE_URL}/api/webhooks/voice/recording"/>`
       : `<Say>No agents are available. Goodbye.</Say>`
 
-    if (!agents || agents.length === 0) {
+    if (availableAgents.length === 0) {
       await db.from('dialer_calls').update({ status: 'no-answer', ended_at: new Date().toISOString() }).eq('telnyx_call_control_id', callSid)
-      return texml(`<Say>All agents are currently unavailable.</Say>\n  ${voicemailXml}`)
+      return texml(voicemailXml)
     }
 
-    const sipTargets = agents
+    const sipTargets = availableAgents
       .map((a: { sip_username: string; sip_connection_id: string | null }) => `  <Sip>${agentSipUri(a.sip_username, a.sip_connection_id)}</Sip>`)
       .join('\n')
 
-    return texml(`<Dial callerName="GROUP:${group.name}" timeout="20" action="${BASE_URL}/api/webhooks/voice/status">\n${sipTargets}\n  </Dial>`)
+    return texml(`<Dial callerName="GROUP:${group.name}" timeout="30" action="${BASE_URL}/api/webhooks/voice/status">\n${sipTargets}\n  </Dial>`)
   }
 
   // --- 2. Try direct agent line (extension or did field) ---
