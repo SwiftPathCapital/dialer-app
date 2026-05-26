@@ -6,18 +6,19 @@ import { usePathname } from 'next/navigation'
 import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import { supabase } from '@/lib/supabase'
+import Tour from '@/components/Tour'
 
 const NAV = [
-  { href: '/dashboard', icon: Phone, label: 'Softphone' },
-  { href: '/sms', icon: MessageSquare, label: 'SMS' },
-  { href: '/voicemail', icon: Voicemail, label: 'Voicemail' },
+  { href: '/dashboard', icon: Phone, label: 'Softphone', dataTour: 'nav-softphone' },
+  { href: '/sms', icon: MessageSquare, label: 'SMS', dataTour: 'nav-sms' },
+  { href: '/voicemail', icon: Voicemail, label: 'Voicemail', dataTour: 'nav-voicemail' },
 ]
 
 const ADMIN_NAV = [
-  { href: '/admin/monitor', icon: Activity, label: 'Monitor' },
-  { href: '/admin/calls', icon: PhoneCall, label: 'Call Center' },
-  { href: '/admin/groups', icon: Users, label: 'Groups' },
-  { href: '/admin/config', icon: SlidersHorizontal, label: 'Config' },
+  { href: '/admin/monitor', icon: Activity, label: 'Monitor', dataTour: 'nav-monitor' },
+  { href: '/admin/calls', icon: PhoneCall, label: 'Call Center', dataTour: 'nav-calls' },
+  { href: '/admin/groups', icon: Users, label: 'Groups', dataTour: 'nav-groups' },
+  { href: '/admin/config', icon: SlidersHorizontal, label: 'Config', dataTour: '' },
 ]
 
 const STATUS_OPTIONS = [
@@ -117,13 +118,14 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 py-4 px-2 flex flex-col gap-0.5">
-        {NAV.map(({ href, icon: Icon, label }) => {
+        {NAV.map(({ href, icon: Icon, label, dataTour }) => {
           const active = pathname === href
           const badge = href === '/voicemail' && unreadVoicemails > 0 ? unreadVoicemails : 0
           return (
             <Link
               key={href}
               href={href}
+              data-tour={dataTour || undefined}
               className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 active
                   ? 'bg-blue-600 text-white'
@@ -147,12 +149,13 @@ export default function Sidebar() {
         {agent?.role === 'admin' && (
           <div className="mt-auto pt-4 border-t border-gray-700 space-y-0.5">
             <p className="hidden md:block text-gray-600 text-xs uppercase tracking-widest px-3 pb-1">Admin</p>
-            {ADMIN_NAV.map(({ href, icon: Icon, label }) => {
+            {ADMIN_NAV.map(({ href, icon: Icon, label, dataTour }) => {
               const active = pathname.startsWith(href)
               return (
                 <Link
                   key={href}
                   href={href}
+                  data-tour={dataTour || undefined}
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                     active
                       ? 'bg-blue-600 text-white'
@@ -184,7 +187,9 @@ export default function Sidebar() {
           </div>
 
           {/* Status picker */}
-          <StatusPicker />
+          <div data-tour="status-picker">
+            <StatusPicker />
+          </div>
 
           <button
             onClick={logout}
@@ -193,6 +198,8 @@ export default function Sidebar() {
             <LogOut className="w-4 h-4 shrink-0" />
             <span className="hidden md:block">Sign out</span>
           </button>
+
+          <Tour />
         </div>
       )}
     </aside>
