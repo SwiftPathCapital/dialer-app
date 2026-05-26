@@ -12,7 +12,9 @@ export default function InboundAlert() {
 
   return (
     <div className="fixed bottom-6 right-6 z-50 bg-gray-800 border border-gray-600 rounded-2xl shadow-2xl p-5 w-72 animate-in slide-in-from-bottom-4">
-      <p className="text-xs text-gray-400 uppercase tracking-widest mb-1">Incoming Call</p>
+      <p className="text-xs text-gray-400 uppercase tracking-widest mb-1">
+        {activeCall.groupName ? `Group Call — ${activeCall.groupName}` : 'Incoming Call'}
+      </p>
       <p className="text-white text-lg font-semibold mb-4">{activeCall.remoteNumber}</p>
       <div className="flex gap-3">
         <button
