@@ -195,7 +195,8 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
                     action: 'answer',
                     agentId: agent.id,
                     remoteNumber: prev.remoteNumber.replace(/\D/g, ''),
-                    groupName: prev.groupName, // optional — used to narrow the match
+                    groupName: prev.groupName,
+                    agentCallLegId: call.id, // agent's Telnyx call leg ID for barge
                   }),
                 }).catch(() => {})
               }

@@ -50,13 +50,14 @@ export async function PATCH(req: NextRequest) {
 
   // When an agent answers an inbound call, attribute it to them
   if (body.action === 'answer') {
-    const { agentId, remoteNumber, groupName } = body
+    const { agentId, remoteNumber, groupName, agentCallLegId } = body
 
-    // Match any ringing unattributed call from this number — works for both
-    // group calls (agent_id is null) and as a no-op for direct calls (agent_id already set)
+    const updates: Record<string, string> = { agent_id: agentId, status: 'active' }
+    if (agentCallLegId) updates.agent_call_leg_id = agentCallLegId
+
     let query = db
       .from('dialer_calls')
-      .update({ agent_id: agentId, status: 'active' })
+      .update(updates)
       .ilike('from_number', `%${remoteNumber}%`)
       .in('status', ['ringing', 'initiated'])
       .is('ended_at', null)

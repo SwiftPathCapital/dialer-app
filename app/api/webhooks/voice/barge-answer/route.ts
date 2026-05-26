@@ -15,9 +15,11 @@ export async function POST(req: NextRequest) {
   }
 
   let liveCallControlId: string
+  let agentCallLegId: string | null
   try {
     const decoded = JSON.parse(Buffer.from(clientStateB64, 'base64').toString())
     liveCallControlId = decoded.call_control_id
+    agentCallLegId = decoded.agent_call_leg_id || null
   } catch {
     return NextResponse.json({ error: 'Invalid client_state' }, { status: 400 })
   }
@@ -29,7 +31,7 @@ export async function POST(req: NextRequest) {
 
   const headers = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
 
-  // Step 1: Create conference using the live call leg — moves it into the conference
+  // Step 1: Create conference with the caller's leg
   const confRes = await fetch('https://api.telnyx.com/v2/conferences', {
     method: 'POST',
     headers,
@@ -40,12 +42,26 @@ export async function POST(req: NextRequest) {
     }),
   })
   const confData = await confRes.json()
-  if (!confRes.ok) return NextResponse.json({ ok: true }) // live call unaffected if this fails
+  if (!confRes.ok) return NextResponse.json({ ok: true })
 
   const conferenceId = confData.data?.id
   if (!conferenceId) return NextResponse.json({ ok: true })
 
-  // Step 2: Join admin to conference in muted (listen-only) mode
+  // Step 2: Re-add the agent's leg so they stay in the call
+  if (agentCallLegId) {
+    await fetch(`https://api.telnyx.com/v2/conferences/${conferenceId}/actions/join`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        call_control_id: agentCallLegId,
+        mute: false,
+        hold: false,
+        start_conference_on_create: false,
+      }),
+    })
+  }
+
+  // Step 3: Join admin muted (listen-only)
   await fetch(`https://api.telnyx.com/v2/conferences/${conferenceId}/actions/join`, {
     method: 'POST',
     headers,

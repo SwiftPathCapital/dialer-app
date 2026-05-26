@@ -8,17 +8,19 @@ export async function POST(req: NextRequest) {
 
   const db = createServerClient()
 
-  const [apiKeyRes, connIdRes, groupRes, appUrlRes] = await Promise.all([
+  const [apiKeyRes, connIdRes, groupRes, appUrlRes, callRes] = await Promise.all([
     db.from('app_config').select('value').eq('key', 'telnyx_api_key').single(),
     db.from('app_config').select('value').eq('key', 'telnyx_sip_connection_id').single(),
     db.from('inbound_groups').select('phone_number').not('phone_number', 'is', null).limit(1).single(),
     db.from('app_config').select('value').eq('key', 'app_url').single(),
+    db.from('dialer_calls').select('agent_call_leg_id').eq('telnyx_call_control_id', call_control_id).maybeSingle(),
   ])
 
   const apiKey = apiKeyRes.data?.value
   const connectionId = connIdRes.data?.value
   const fromNumber = groupRes.data?.phone_number
   const appUrl = appUrlRes.data?.value || process.env.NEXT_PUBLIC_APP_URL || ''
+  const agentCallLegId = callRes.data?.agent_call_leg_id || null
 
   if (!apiKey) return NextResponse.json({ error: 'Telnyx API key not configured in Admin → Config.' }, { status: 500 })
   if (!connectionId) return NextResponse.json({ error: 'Call Control App ID not configured in Admin → Config.' }, { status: 500 })
@@ -31,7 +33,7 @@ export async function POST(req: NextRequest) {
 
   // Step 1: Validate the connection_id by doing a dry-run dial FIRST.
   // We dial admin before touching the live call so a failure here is safe.
-  const clientState = Buffer.from(JSON.stringify({ call_control_id })).toString('base64')
+  const clientState = Buffer.from(JSON.stringify({ call_control_id, agent_call_leg_id: agentCallLegId })).toString('base64')
   const adminSipUri = `sip:${admin_sip_username}@sip.telnyx.com`
 
   const dialPayload = {
