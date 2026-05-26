@@ -74,7 +74,7 @@ async function handle(req: NextRequest) {
   // --- 2. Try direct agent line (extension or did field) ---
   const { data: allAgents } = await db
     .from('agents')
-    .select('id, sip_username, sip_connection_id, extension, did')
+    .select('id, sip_username, sip_connection_id, extension, did, status, voicemail_greeting_url')
 
   const directAgent = allAgents?.find(a => {
     const extDigits = a.extension?.replace(/\D/g, '')
@@ -93,8 +93,22 @@ async function handle(req: NextRequest) {
       started_at: new Date().toISOString(),
     })
 
+    // If the agent is not available their SIP client won't be registered — skip the
+    // dial and go straight to voicemail so the caller doesn't wait 30 seconds in silence.
+    if (directAgent.status !== 'available') {
+      await db.from('dialer_calls')
+        .update({ status: 'no-answer', ended_at: new Date().toISOString() })
+        .eq('telnyx_call_control_id', callSid)
+
+      const gUrl = directAgent.voicemail_greeting_url
+      const greetingXml = gUrl && !gUrl.endsWith('.webm')
+        ? `<Play>${gUrl}</Play>`
+        : `<Say>Please leave a message after the beep.</Say>`
+      return texml(`${greetingXml}\n  <Record maxLength="120" recordingStatusCallback="${BASE_URL}/api/webhooks/voice/recording"/>`)
+    }
+
     const sipUri = agentSipUri(directAgent.sip_username, directAgent.sip_connection_id)
-    return texml(`<Dial timeout="20" action="${BASE_URL}/api/webhooks/voice/status">\n  <Sip>${sipUri}</Sip>\n  </Dial>`)
+    return texml(`<Dial timeout="30" action="${BASE_URL}/api/webhooks/voice/status">\n  <Sip>${sipUri}</Sip>\n  </Dial>`)
   }
 
   // --- 3. Nothing matched ---

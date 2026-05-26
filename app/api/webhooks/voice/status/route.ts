@@ -22,6 +22,7 @@ async function handle(req: NextRequest) {
   const callSid = params.get('CallSid') || ''
   const dialStatus = params.get('DialCallStatus') || ''
   const duration = params.get('DialCallDuration')
+  console.log('[voice/status] CallSid:', callSid, 'DialCallStatus:', dialStatus, 'Duration:', duration)
 
   const db = createServerClient()
 

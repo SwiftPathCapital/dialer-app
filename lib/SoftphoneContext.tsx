@@ -44,6 +44,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const ringTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const groupsRef = useRef<Array<{ id: string; name: string; phone_number: string }>>([])
+  const dialingRef = useRef(false)
 
   useEffect(() => {
     if (!agent) return
@@ -94,6 +95,22 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   function stopRing() {
     if (ringTimerRef.current) { clearTimeout(ringTimerRef.current); ringTimerRef.current = null }
     if (audioCtxRef.current) { audioCtxRef.current.close().catch(() => {}); audioCtxRef.current = null }
+  }
+
+  function playHangupTone() {
+    if (typeof window === 'undefined') return
+    const ctx = new AudioContext()
+    const gain = ctx.createGain()
+    gain.gain.setValueAtTime(0.15, ctx.currentTime)
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.35)
+    gain.connect(ctx.destination)
+    const osc = ctx.createOscillator()
+    osc.frequency.setValueAtTime(480, ctx.currentTime)
+    osc.frequency.linearRampToValueAtTime(280, ctx.currentTime + 0.35)
+    osc.connect(gain)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.35)
+    setTimeout(() => ctx.close().catch(() => {}), 600)
   }
 
   useEffect(() => {
@@ -222,6 +239,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
             }
           } else if (call.state === 'hangup' || call.state === 'destroy') {
             stopRing()
+            playHangupTone()
             setActiveCall(null)
             setMuted(false)
             const audio = document.getElementById('telnyx-remote-audio') as HTMLAudioElement
