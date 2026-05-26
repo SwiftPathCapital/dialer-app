@@ -23,8 +23,12 @@ async function handle(req: NextRequest) {
   const from = params.get('From') || ''
   const callSid = params.get('CallSid') || ''
 
+  console.log('[voice webhook] method:', req.method, 'To:', to, 'From:', from, 'CallSid:', callSid)
+
   const [db, BASE_URL] = [createServerClient(), await getAppUrl()]
   const toDigits = to.replace(/\D/g, '')
+
+  console.log('[voice webhook] toDigits:', toDigits)
 
   // --- 1. Try inbound group match ---
   const { data: allGroups } = await db
