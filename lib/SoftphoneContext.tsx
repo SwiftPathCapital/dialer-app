@@ -46,6 +46,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const groupsRef = useRef<Array<{ id: string; name: string; phone_number: string }>>([])
   const dialingRef = useRef(false)
   const prevCallRef = useRef<ActiveCall | null>(null)
+  const callActiveAtRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!agent) return
@@ -55,13 +56,26 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       .catch(() => {})
   }, [agent?.id])
 
-  // Play hangup tone whenever a call ends — runs in React scheduler so AudioContext
-  // isn't blocked by autoplay policy regardless of which side hung up.
+  // Play hangup tone + write duration to DB when a call ends.
   useEffect(() => {
     const prev = prevCallRef.current
     prevCallRef.current = activeCall
     if (prev !== null && activeCall === null) {
       playHangupTone()
+
+      // For outbound calls, the TeXML status webhook never fires, so we track duration
+      // in the browser and write it back ourselves.
+      const activeAt = callActiveAtRef.current
+      callActiveAtRef.current = null
+      if (prev.direction === 'outbound') {
+        const duration_seconds = activeAt ? Math.round((Date.now() - activeAt) / 1000) : null
+        const status = activeAt ? 'completed' : 'no-answer'
+        fetch('/api/calls', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'end', callControlId: prev.id, duration_seconds, status }),
+        }).catch(() => {})
+      }
     }
   }, [activeCall])
 
@@ -236,6 +250,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
             }
           } else if (call.state === 'active') {
             stopRing()
+            callActiveAtRef.current = Date.now()
             setActiveCall(prev => {
               // Attribute inbound call to this agent now that they've answered
               if (prev?.direction === 'inbound' && agent) {

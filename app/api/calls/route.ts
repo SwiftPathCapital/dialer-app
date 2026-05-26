@@ -128,6 +128,21 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
+  // Update outbound call status + duration when the WebRTC call ends in the browser
+  if (body.action === 'end') {
+    const { callControlId, duration_seconds, status } = body
+    if (!callControlId) return NextResponse.json({ error: 'No callControlId' }, { status: 400 })
+    await db
+      .from('dialer_calls')
+      .update({
+        status: status || 'completed',
+        duration_seconds: duration_seconds ?? null,
+        ended_at: new Date().toISOString(),
+      })
+      .eq('telnyx_call_control_id', callControlId)
+    return NextResponse.json({ ok: true })
+  }
+
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
 }
 
