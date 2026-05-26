@@ -25,14 +25,13 @@ export default function InboundAlert() {
 
   return (
     <div className="fixed bottom-6 right-6 z-50 bg-gray-800 border border-gray-600 rounded-2xl shadow-2xl p-5 w-72 animate-in slide-in-from-bottom-4">
-      {activeCall.groupName ? (
-        <div className="flex items-center gap-2 mb-3">
-          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold text-white ${groupColor(activeCall.groupName)}`}>
+      <p className="text-xs text-gray-400 uppercase tracking-widest mb-2">Incoming Call</p>
+      {activeCall.groupName && (
+        <div className="flex items-center gap-2 mb-2">
+          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold text-white ${groupColor(activeCall.groupName)}`}>
             {activeCall.groupName}
           </span>
         </div>
-      ) : (
-        <p className="text-xs text-gray-400 uppercase tracking-widest mb-1">Incoming Call</p>
       )}
       <p className="text-white text-lg font-semibold mb-4">{activeCall.remoteNumber}</p>
       <div className="flex gap-3">

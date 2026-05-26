@@ -27,12 +27,14 @@ export async function GET(req: NextRequest) {
 
   const fromNumber = searchParams.get('from_number')
   const directionFilter = searchParams.get('direction')
+  const statusFilter = searchParams.get('status')
 
   if (toNumber) {
     query = query.ilike('to_number', `%${toNumber}%`)
   } else if (fromNumber) {
     query = query.ilike('from_number', `%${fromNumber}%`)
     if (directionFilter) query = query.eq('direction', directionFilter)
+    if (statusFilter) query = query.eq('status', statusFilter)
   } else if (agentId && groupIds.length > 0) {
     query = query.or(`agent_id.eq.${agentId},group_id.in.(${groupIds.join(',')})`)
   } else if (agentId) {

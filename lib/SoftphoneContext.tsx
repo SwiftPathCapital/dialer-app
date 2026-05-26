@@ -202,15 +202,38 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
             const callerName: string = call.options?.remoteCallerName || ''
             const groupName = callerName.startsWith('GROUP:') ? callerName.slice(6) : undefined
             console.log('[Telnyx] callerName:', callerName, '→ groupName:', groupName)
+            const remoteNumber: string = call.options?.remoteCallerNumber || 'Unknown'
             setActiveCall({
               id: call.id,
               direction: 'inbound',
-              remoteNumber: call.options?.remoteCallerNumber || 'Unknown',
+              remoteNumber,
               groupName,
               state: 'ringing',
               telnyxCall: call,
             })
             startRing(groupName ? 'group-inbound' : 'inbound')
+
+            // Fallback: if the SIP header didn't carry the GROUP: prefix, look up the
+            // group from the DB — the webhook inserts the row before Telnyx sends the INVITE.
+            if (!groupName) {
+              const digits = remoteNumber.replace(/\D/g, '')
+              if (digits) {
+                fetch(`/api/calls?from_number=${digits}&direction=inbound&status=ringing&limit=1`)
+                  .then(r => r.json())
+                  .then((calls: { group_id?: string }[]) => {
+                    const dbCall = calls?.[0]
+                    if (dbCall?.group_id) {
+                      const group = groupsRef.current.find(g => g.id === dbCall.group_id)
+                      if (group) {
+                        setActiveCall(prev => prev ? { ...prev, groupName: group.name } : null)
+                        stopRing()
+                        startRing('group-inbound')
+                      }
+                    }
+                  })
+                  .catch(() => {})
+              }
+            }
           } else if (call.state === 'active') {
             stopRing()
             setActiveCall(prev => {
