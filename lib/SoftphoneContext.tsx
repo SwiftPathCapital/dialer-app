@@ -45,6 +45,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const groupsRef = useRef<Array<{ id: string; name: string; phone_number: string }>>([])
   const dialingRef = useRef(false)
+  const prevCallRef = useRef<ActiveCall | null>(null)
 
   useEffect(() => {
     if (!agent) return
@@ -53,6 +54,16 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       .then(data => { if (Array.isArray(data)) groupsRef.current = data })
       .catch(() => {})
   }, [agent?.id])
+
+  // Play hangup tone whenever a call ends — runs in React scheduler so AudioContext
+  // isn't blocked by autoplay policy regardless of which side hung up.
+  useEffect(() => {
+    const prev = prevCallRef.current
+    prevCallRef.current = activeCall
+    if (prev !== null && activeCall === null) {
+      playHangupTone()
+    }
+  }, [activeCall])
 
   function startRing(type: RingType) {
     stopRing()
@@ -239,7 +250,6 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
             }
           } else if (call.state === 'hangup' || call.state === 'destroy') {
             stopRing()
-            playHangupTone()
             setActiveCall(null)
             setMuted(false)
             const audio = document.getElementById('telnyx-remote-audio') as HTMLAudioElement
