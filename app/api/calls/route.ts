@@ -148,5 +148,15 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Stamp last_called_at on the lead so it won't appear in the dialer queue for 8 hours
+  const toDigits = (body.to_number || '').replace(/\D/g, '')
+  if (toDigits) {
+    await db
+      .from('leads')
+      .update({ last_called_at: new Date().toISOString() })
+      .ilike('phone', `%${toDigits}%`)
+  }
+
   return NextResponse.json(data)
 }

@@ -59,6 +59,10 @@ export async function GET(req: NextRequest) {
         // Supabase .in() doesn't trim, so include all trimmed variants
         query = query.in('lead_type', activeSources)
       }
+
+      // Exclude leads called in the last 8 hours from the dialer queue
+      const eightHoursAgo = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString()
+      query = query.or(`last_called_at.is.null,last_called_at.lt.${eightHoursAgo}`)
     }
     if (search) {
       query = query.or(`company_name.ilike.%${search}%,name.ilike.%${search}%,phone.ilike.%${search}%`)
