@@ -73,10 +73,12 @@ export async function PATCH(req: NextRequest) {
       if (group) query = query.eq('group_id', group.id)
     }
 
-    await query
+    // Return the caller's telnyx_call_control_id — this is a real CC API ID we can record on
+    const { data: updatedCalls } = await query.select('telnyx_call_control_id')
+    const callerControlId = updatedCalls?.[0]?.telnyx_call_control_id
 
-    // Start recording on the agent's call leg
-    if (agentCallLegId) {
+    // Start recording on the caller's call leg (TeXML CallSid = valid CC API call_control_id)
+    if (callerControlId) {
       const [apiKeyRes, appUrlRes] = await Promise.all([
         db.from('app_config').select('value').eq('key', 'telnyx_api_key').single(),
         db.from('app_config').select('value').eq('key', 'app_url').single(),
@@ -84,7 +86,7 @@ export async function PATCH(req: NextRequest) {
       const apiKey = apiKeyRes.data?.value
       const appUrl = appUrlRes.data?.value || process.env.NEXT_PUBLIC_APP_URL || ''
       if (apiKey && appUrl) {
-        await fetch(`https://api.telnyx.com/v2/calls/${agentCallLegId}/actions/record_start`, {
+        await fetch(`https://api.telnyx.com/v2/calls/${callerControlId}/actions/record_start`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({

@@ -16,19 +16,20 @@ async function handle(req: NextRequest) {
 
   const db = createServerClient()
 
-  // Inbound: matched by agent_call_leg_id; outbound: matched by telnyx_call_control_id
-  const { data: byLegId } = await db
+  // Primary: match by telnyx_call_control_id (the caller's TeXML leg — what we called record_start on)
+  const { data: byControlId } = await db
     .from('dialer_calls')
     .update({ recording_url: recordingUrl })
-    .eq('agent_call_leg_id', callControlId)
+    .eq('telnyx_call_control_id', callControlId)
     .select('id')
     .limit(1)
 
-  if (!byLegId?.length) {
+  // Fallback: match by agent_call_leg_id (outbound calls)
+  if (!byControlId?.length) {
     await db
       .from('dialer_calls')
       .update({ recording_url: recordingUrl })
-      .eq('telnyx_call_control_id', callControlId)
+      .eq('agent_call_leg_id', callControlId)
   }
 
   return NextResponse.json({ ok: true })
