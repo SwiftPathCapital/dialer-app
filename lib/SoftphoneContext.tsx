@@ -60,6 +60,12 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const prev = prevCallRef.current
     prevCallRef.current = activeCall
+
+    // Call just started — unlock dialing guard
+    if (prev === null && activeCall !== null) {
+      dialingRef.current = false
+    }
+
     if (prev !== null && activeCall === null) {
       playHangupTone()
 
@@ -318,6 +324,8 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
 
   function makeCall(number: string) {
     if (!clientRef.current || !agent) return
+    if (dialingRef.current) return
+    dialingRef.current = true
 
     const call = clientRef.current.newCall({
       destinationNumber: number,

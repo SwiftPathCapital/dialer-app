@@ -252,7 +252,7 @@ export default function DashboardPage() {
                             )}
                           </div>
                         </div>
-                        {call.duration_seconds != null && (
+                        {call.duration_seconds != null && call.duration_seconds > 0 && (
                           <div className="flex items-center gap-1 text-gray-400 text-xs shrink-0">
                             <Clock className="w-3 h-3" />
                             {Math.floor(call.duration_seconds / 60)}:{String(call.duration_seconds % 60).padStart(2, '0')}

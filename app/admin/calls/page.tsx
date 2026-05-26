@@ -98,7 +98,7 @@ function EditableCall({ call, onSaved }: { call: CallRow; onSaved: () => void })
             {call.agents?.name || 'No agent'} · {new Date(call.started_at).toLocaleString()} · {call.status}
           </p>
         </div>
-        {call.duration_seconds != null && (
+        {call.duration_seconds != null && call.duration_seconds > 0 && (
           <div className="flex items-center gap-1 text-gray-400 text-xs shrink-0">
             <Clock className="w-3 h-3" />
             {fmt(call.duration_seconds)}
