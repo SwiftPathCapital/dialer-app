@@ -73,6 +73,7 @@ export interface Lead {
   fico: string | null
   employee_size: string | null
   why_funds: string | null
+  last_called_at: string | null
 }
 
 export interface SMSConversation {

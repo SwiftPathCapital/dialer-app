@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
 
   let query = db
     .from('leads')
-    .select('id, name, first_name, last_name, phone, company_name, email, state, city, status, lead_type, lead_type_label, assigned_to, created_at, revenue, monthly_deposit, requested_amount, tib, fico, employee_size, why_funds')
+    .select('id, name, first_name, last_name, phone, company_name, email, state, city, status, lead_type, lead_type_label, assigned_to, created_at, revenue, monthly_deposit, requested_amount, tib, fico, employee_size, why_funds, last_called_at')
     .order('created_at', { ascending: false })
     .limit(limit)
 

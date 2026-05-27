@@ -2,12 +2,25 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Phone, Search, Building2 } from 'lucide-react'
+import { Phone, Search, Building2, Lock, X } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import { Lead } from '@/lib/types'
 
+const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000
+
+function getCooldown(lead: Lead): { locked: boolean; until: string } {
+  if (!lead.last_called_at) return { locked: false, until: '' }
+  const ago = Date.now() - new Date(lead.last_called_at).getTime()
+  if (ago >= EIGHT_HOURS_MS) return { locked: false, until: '' }
+  const until = new Date(new Date(lead.last_called_at).getTime() + EIGHT_HOURS_MS)
+  return {
+    locked: true,
+    until: until.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+  }
+}
+
 export default function LeadsPage() {
-  const { agent, agentLoading, makeCall } = useSoftphone()
+  const { agent, agentLoading, makeCall, callErrorMsg, clearCallError } = useSoftphone()
   const router = useRouter()
   const [leads, setLeads] = useState<Lead[]>([])
   const [search, setSearch] = useState('')
@@ -35,9 +48,10 @@ export default function LeadsPage() {
     ;(handleSearch as any)._t = setTimeout(() => loadLeads(value), 300)
   }
 
-  function dial(phone: string) {
-    makeCall(phone.replace(/\D/g, '').replace(/^1?(\d{10})$/, '+1$1'))
-    router.push('/dashboard')
+  async function dial(phone: string) {
+    const number = phone.replace(/\D/g, '').replace(/^1?(\d{10})$/, '+1$1')
+    const ok = await makeCall(number)
+    if (ok) router.push('/dashboard')
   }
 
   if (!agent) return null
@@ -48,6 +62,17 @@ export default function LeadsPage() {
         <h1 className="text-2xl font-bold text-white">Leads</h1>
         <span className="text-gray-500 text-sm">{leads.length} leads</span>
       </div>
+
+      {/* Call-blocked error toast */}
+      {callErrorMsg && (
+        <div className="mb-4 flex items-start gap-3 bg-red-950 border border-red-700 text-red-300 rounded-xl px-4 py-3 text-sm">
+          <Lock className="w-4 h-4 mt-0.5 shrink-0 text-red-400" />
+          <span className="flex-1">{callErrorMsg}</span>
+          <button onClick={clearCallError} className="text-red-500 hover:text-red-300 shrink-0">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative mb-5">
@@ -71,6 +96,7 @@ export default function LeadsPage() {
             const displayName = lead.company_name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.name || 'Unknown'
             const contactName = lead.company_name ? [lead.first_name, lead.last_name].filter(Boolean).join(' ') : null
             const phone = lead.phone
+            const cooldown = getCooldown(lead)
 
             return (
               <div
@@ -93,7 +119,16 @@ export default function LeadsPage() {
                     {lead.status}
                   </span>
                 )}
-                {phone && (
+                {/* Call button or cooldown badge */}
+                {phone && cooldown.locked ? (
+                  <span
+                    title={`Cannot call until ${cooldown.until} — dispositioned within the last 8 hours`}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700/60 text-gray-500 text-xs rounded-lg shrink-0 cursor-not-allowed select-none"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    Until {cooldown.until}
+                  </span>
+                ) : phone ? (
                   <button
                     onClick={() => dial(phone)}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-green-700 hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors shrink-0"
@@ -101,7 +136,7 @@ export default function LeadsPage() {
                     <Phone className="w-3.5 h-3.5" />
                     Call
                   </button>
-                )}
+                ) : null}
               </div>
             )
           })}

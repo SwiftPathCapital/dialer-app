@@ -26,7 +26,8 @@ interface SoftphoneContextValue {
   activeCall: ActiveCall | null
   waitingCall: ActiveCall | null   // inbound ringing while already on a call
   heldCall: ActiveCall | null     // the call we placed on hold to answer waitingCall
-  makeCall: (number: string) => void
+  /** Initiates an outbound call. Returns true if the dial proceeded, false if blocked (e.g. cooldown). */
+  makeCall: (number: string) => Promise<boolean>
   answerCall: () => void
   hangupCall: () => void
   answerWaiting: () => void       // hold active, answer waiting
@@ -35,6 +36,9 @@ interface SoftphoneContextValue {
   toggleHold: () => void
   toggleMute: () => void
   muted: boolean
+  /** Set when makeCall is blocked (e.g. 8-hour cooldown). Auto-clears after 6 s. */
+  callErrorMsg: string | null
+  clearCallError: () => void
 }
 
 const SoftphoneContext = createContext<SoftphoneContextValue | null>(null)
@@ -47,6 +51,8 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const [waitingCall, setWaitingCall] = useState<ActiveCall | null>(null)
   const [heldCall, setHeldCall] = useState<ActiveCall | null>(null)
   const [muted, setMuted] = useState(false)
+  const [callErrorMsg, setCallErrorMsg] = useState<string | null>(null)
+  const callErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const clientRef = useRef<any>(null)
@@ -529,9 +535,33 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   }
 
   // ── Public call actions ───────────────────────────────────────────────────
-  function makeCall(number: string) {
-    if (!clientRef.current || !agent) return
-    if (dialingRef.current) return
+  async function makeCall(number: string): Promise<boolean> {
+    if (!clientRef.current || !agent) return false
+    if (dialingRef.current) return false
+
+    // ── 8-hour cooldown pre-flight check ─────────────────────────────────────
+    // Must happen BEFORE client.newCall() so the WebRTC dial never fires when blocked.
+    const digits = number.replace(/\D/g, '')
+    if (digits.length >= 7) {
+      try {
+        const res = await fetch(`/api/calls/cooldown?phone=${digits}`)
+        if (res.ok) {
+          const check = await res.json()
+          if (check.blocked) {
+            const until = new Date(check.until)
+            const timeStr = until.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+            const msg = `This lead cannot be called again until ${timeStr} (8-hour cooldown after disposition).`
+            setCallErrorMsg(msg)
+            if (callErrorTimerRef.current) clearTimeout(callErrorTimerRef.current)
+            callErrorTimerRef.current = setTimeout(() => setCallErrorMsg(null), 6000)
+            return false
+          }
+        }
+      } catch {
+        // Network error — let the call proceed rather than silently block
+      }
+    }
+
     dialingRef.current = true
     setAgentBusy()
 
@@ -560,6 +590,12 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       telnyxCall: call,
     })
     startRing('outbound')
+    return true
+  }
+
+  function clearCallError() {
+    if (callErrorTimerRef.current) { clearTimeout(callErrorTimerRef.current); callErrorTimerRef.current = null }
+    setCallErrorMsg(null)
   }
 
   function answerCall() {
@@ -659,6 +695,8 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       toggleHold,
       toggleMute,
       muted,
+      callErrorMsg,
+      clearCallError,
     }}>
       {children}
     </SoftphoneContext.Provider>

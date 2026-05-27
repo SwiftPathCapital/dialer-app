@@ -81,5 +81,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Re-stamp last_called_at on the lead so the 8-hour cooldown clock runs from
+  // disposition time, not call-start time.  This blocks any agent from calling
+  // the same number again for 8 hours after it has been dispositioned.
+  if (lead_id) {
+    await db.from('leads').update({ last_called_at: new Date().toISOString() }).eq('id', lead_id)
+  } else if (lead_phone) {
+    const d = (lead_phone || '').replace(/\D/g, '')
+    if (d.length >= 7) {
+      await db.from('leads').update({ last_called_at: new Date().toISOString() }).ilike('phone', `%${d}%`)
+    }
+  }
+
   return NextResponse.json({ ok: true })
 }
