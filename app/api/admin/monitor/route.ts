@@ -15,15 +15,21 @@ export async function GET() {
       .gte('started_at', new Date(Date.now() - 30 * 60 * 1000).toISOString())
       .order('started_at', { ascending: false }),
     db.from('dialer_calls')
-      .select('agent_id')
+      .select('agent_id, direction, duration_seconds')
       .gte('started_at', today.toISOString()),
     db.from('inbound_group_members').select('agent_id, group_id'),
   ])
 
   const agents = agentsRes.data || []
   const activeCalls = activeCallsRes.data || []
-  const todayCalls = todayCallsRes.data || []
+  const todayCalls: { agent_id: string | null; direction: string; duration_seconds: number | null }[] = todayCallsRes.data || []
   const memberships: { agent_id: string; group_id: string }[] = membershipsRes.data || []
+
+  function avgTalk(calls: typeof todayCalls) {
+    const talking = calls.filter(c => c.duration_seconds && c.duration_seconds > 30)
+    if (!talking.length) return null
+    return Math.round(talking.reduce((s, c) => s + (c.duration_seconds ?? 0), 0) / talking.length)
+  }
 
   // Group calls ringing all members — only show during the actual ring window (dial timeout is 20s)
   const ringCutoff = new Date(Date.now() - 25 * 1000).toISOString()
@@ -40,6 +46,10 @@ export async function GET() {
       activeCall = groupCall
     }
 
+    const agentCalls = todayCalls.filter(c => c.agent_id === agent.id)
+    const outboundCalls = agentCalls.filter(c => c.direction === 'outbound')
+    const inboundCalls  = agentCalls.filter(c => c.direction === 'inbound')
+
     return {
       ...agent,
       activeCall: activeCall
@@ -51,7 +61,11 @@ export async function GET() {
             telnyx_call_control_id: activeCall.telnyx_call_control_id,
           }
         : null,
-      callsToday: todayCalls.filter(c => c.agent_id === agent.id).length,
+      callsToday:      agentCalls.length,
+      outboundToday:   outboundCalls.length,
+      inboundToday:    inboundCalls.length,
+      avgTalkOutbound: avgTalk(outboundCalls),
+      avgTalkInbound:  avgTalk(inboundCalls),
     }
   })
 

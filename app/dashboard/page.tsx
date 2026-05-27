@@ -11,12 +11,17 @@ import VoicemailGreeting from '@/components/VoicemailGreeting'
 import { Lead, Call } from '@/lib/types'
 
 const DISPOSITIONS = [
-  { label: 'Interested',     color: 'bg-green-700 hover:bg-green-600' },
-  { label: 'Callback',       color: 'bg-blue-700 hover:bg-blue-600' },
-  { label: 'Not Interested', color: 'bg-red-700 hover:bg-red-600' },
-  { label: 'No Answer',      color: 'bg-gray-600 hover:bg-gray-500' },
-  { label: 'Wrong Number',   color: 'bg-yellow-700 hover:bg-yellow-600' },
-  { label: 'DNC',            color: 'bg-orange-700 hover:bg-orange-600' },
+  { label: 'Interested',          color: 'bg-green-700 hover:bg-green-600' },
+  { label: 'Callback',            color: 'bg-blue-700 hover:bg-blue-600' },
+  { label: 'App Received',        color: 'bg-teal-700 hover:bg-teal-600' },
+  { label: 'Docs Received',       color: 'bg-indigo-700 hover:bg-indigo-600' },
+  { label: 'Pending App & Docs',  color: 'bg-amber-700 hover:bg-amber-600' },
+  { label: 'Deal Funded',         color: 'bg-emerald-600 hover:bg-emerald-500' },
+  { label: 'Not Interested',      color: 'bg-red-700 hover:bg-red-600' },
+  { label: 'No Answer',           color: 'bg-gray-600 hover:bg-gray-500' },
+  { label: 'Left Voicemail',      color: 'bg-purple-700 hover:bg-purple-600' },
+  { label: 'Wrong Number',        color: 'bg-yellow-700 hover:bg-yellow-600' },
+  { label: 'DNC',                 color: 'bg-orange-700 hover:bg-orange-600' },
 ]
 
 export default function DashboardPage() {
@@ -29,6 +34,7 @@ export default function DashboardPage() {
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [inboundLead, setInboundLead] = useState<Lead | null>(null)
+  const [dialedLead, setDialedLead] = useState<Lead | null>(null)
   const prevCallRef = useRef(activeCall)
 
   useEffect(() => {
@@ -43,13 +49,17 @@ export default function DashboardPage() {
   const lead = leads[index] ?? null
 
   useEffect(() => {
-    if (!lead?.phone) { setCallHistory([]); return }
-    const digits = lead.phone.replace(/\D/g, '')
+    // Show call history for whoever is on the line; fall back to queue lead
+    const historyLead = activeCall
+      ? (activeCall.direction === 'inbound' ? inboundLead : dialedLead)
+      : lead
+    if (!historyLead?.phone) { setCallHistory([]); return }
+    const digits = historyLead.phone.replace(/\D/g, '')
     fetch(`/api/calls?to_number=${encodeURIComponent(digits)}&limit=10`)
       .then(r => r.json())
       .then(d => setCallHistory(Array.isArray(d) ? d : []))
       .catch(() => {})
-  }, [lead?.id])
+  }, [lead?.id, activeCall?.id, inboundLead?.id, dialedLead?.id])
 
   // Look up inbound caller in leads so we show their info instead of the queue lead
   useEffect(() => {
@@ -63,15 +73,27 @@ export default function DashboardPage() {
       .catch(() => {})
   }, [activeCall?.id, activeCall?.direction])
 
+  // For manual outbound dials (Dialpad), dialedLead isn't set by dial() — fetch it by number
+  useEffect(() => {
+    if (!activeCall || activeCall.direction !== 'outbound' || dialedLead) return
+    const phone = activeCall.remoteNumber.replace(/\D/g, '')
+    if (!phone) return
+    fetch(`/api/leads?phone=${encodeURIComponent(phone)}&limit=1`)
+      .then(r => r.json())
+      .then(d => setDialedLead(Array.isArray(d) && d.length > 0 ? d[0] : null))
+      .catch(() => {})
+  }, [activeCall?.id, activeCall?.direction])
+
   // Detect when a call ends → trigger wrap-up
   useEffect(() => {
     const prev = prevCallRef.current
     prevCallRef.current = activeCall
-    if (prev && !activeCall && lead) {
+    if (prev && !activeCall) {
       // Inbound calls that ended while still ringing mean another agent answered — skip dispo
-      if (prev.direction === 'inbound' && prev.state === 'ringing') return
-      setWrapup({ lead })
-      setNotes('')
+      if (prev.direction === 'inbound' && prev.state === 'ringing') { setDialedLead(null); return }
+      const wrapLead = prev.direction === 'outbound' ? (dialedLead || lead) : (inboundLead || lead)
+      setDialedLead(null)
+      if (wrapLead) { setWrapup({ lead: wrapLead }); setNotes('') }
     }
   }, [activeCall])
 
@@ -108,6 +130,7 @@ export default function DashboardPage() {
   function dial() {
     if (!lead?.phone || wrapup) return
     const e164 = lead.phone.replace(/\D/g, '').replace(/^1?(\d{10})$/, '+1$1')
+    setDialedLead(lead)
     makeCall(e164)
   }
 
@@ -117,11 +140,17 @@ export default function DashboardPage() {
 
   if (!agent) return null
 
-  const company = lead
-    ? (lead.company_name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.name || 'Unknown')
+  // During a call, show that caller's lead; otherwise show queue lead
+  const activeLead = activeCall
+    ? (activeCall.direction === 'inbound' ? inboundLead : dialedLead)
     : null
-  const contact = lead?.company_name
-    ? [lead.first_name, lead.last_name].filter(Boolean).join(' ')
+  const displayedLead = activeLead ?? lead
+
+  const company = displayedLead
+    ? (displayedLead.company_name || [displayedLead.first_name, displayedLead.last_name].filter(Boolean).join(' ') || displayedLead.name || 'Unknown')
+    : null
+  const contact = displayedLead?.company_name
+    ? [displayedLead.first_name, displayedLead.last_name].filter(Boolean).join(' ')
     : null
 
   return (
@@ -137,13 +166,13 @@ export default function DashboardPage() {
       <div className="flex flex-wrap gap-6">
         {/* Left: softphone */}
         <div className="space-y-4">
-          <ActiveCall lead={activeCall?.direction === 'inbound' ? inboundLead : lead} />
+          <ActiveCall lead={activeCall?.direction === 'inbound' ? inboundLead : dialedLead} />
           <Dialpad />
           <VoicemailGreeting />
         </div>
 
         {/* Right: wrap-up OR preview dialer */}
-        {lead && (
+        {(lead || activeLead) && (
           <div className="flex-1 min-w-72 space-y-4">
             {wrapup ? (
               /* ── Wrap-up: notes + disposition ── */
@@ -189,46 +218,48 @@ export default function DashboardPage() {
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
                 <div className="flex items-start justify-between mb-1">
                   <p className="text-xs text-gray-500 uppercase tracking-widest">
-                    Lead {index + 1} of {leads.length}
+                    {activeLead ? 'On Call' : `Lead ${index + 1} of ${leads.length}`}
                   </p>
-                  {lead.status && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-400">{lead.status}</span>
+                  {displayedLead?.status && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-400">{displayedLead.status}</span>
                   )}
                 </div>
 
                 <p className="text-white font-semibold text-lg mt-2">{company}</p>
                 {contact && <p className="text-gray-400 text-sm">{contact}</p>}
-                <p className="text-gray-500 text-sm">{lead.phone}</p>
+                <p className="text-gray-500 text-sm">{displayedLead?.phone}</p>
 
                 <div className="border-t border-gray-700 mt-4 pt-4 space-y-2">
-                  {lead.email && <Row label="Email" value={lead.email} />}
-                  {(lead.city || lead.state) && <Row label="Location" value={[lead.city, lead.state].filter(Boolean).join(', ')} />}
-                  {(lead.lead_type_label || lead.lead_type) && <Row label="Type" value={lead.lead_type_label || lead.lead_type!} />}
-                  {lead.revenue && <Row label="Revenue" value={lead.revenue} />}
-                  {lead.monthly_deposit && <Row label="Monthly Dep." value={lead.monthly_deposit} />}
-                  {lead.requested_amount && <Row label="Requested" value={lead.requested_amount} />}
-                  {lead.tib && <Row label="Time in Business" value={lead.tib} />}
-                  {lead.fico && <Row label="FICO" value={lead.fico} />}
-                  {lead.employee_size && <Row label="Employees" value={lead.employee_size} />}
-                  {lead.why_funds && <Row label="Why Funds" value={lead.why_funds} />}
+                  {displayedLead?.email && <Row label="Email" value={displayedLead.email} />}
+                  {(displayedLead?.city || displayedLead?.state) && <Row label="Location" value={[displayedLead.city, displayedLead.state].filter(Boolean).join(', ')} />}
+                  {(displayedLead?.lead_type_label || displayedLead?.lead_type) && <Row label="Type" value={displayedLead.lead_type_label || displayedLead.lead_type!} />}
+                  {displayedLead?.revenue && <Row label="Revenue" value={displayedLead.revenue} />}
+                  {displayedLead?.monthly_deposit && <Row label="Monthly Dep." value={displayedLead.monthly_deposit} />}
+                  {displayedLead?.requested_amount && <Row label="Requested" value={displayedLead.requested_amount} />}
+                  {displayedLead?.tib && <Row label="Time in Business" value={displayedLead.tib} />}
+                  {displayedLead?.fico && <Row label="FICO" value={displayedLead.fico} />}
+                  {displayedLead?.employee_size && <Row label="Employees" value={displayedLead.employee_size} />}
+                  {displayedLead?.why_funds && <Row label="Why Funds" value={displayedLead.why_funds} />}
                 </div>
 
-                <div className="flex gap-3 mt-5">
-                  <button
-                    onClick={dial}
-                    disabled={!!activeCall}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white font-semibold rounded-lg transition-colors"
-                  >
-                    <Phone className="w-4 h-4" /> Call
-                  </button>
-                  <button
-                    onClick={skip}
-                    disabled={index >= leads.length - 1 || !!activeCall}
-                    className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-gray-300 rounded-lg transition-colors text-sm"
-                  >
-                    <SkipForward className="w-4 h-4" /> Skip
-                  </button>
-                </div>
+                {!activeLead && lead && (
+                  <div className="flex gap-3 mt-5">
+                    <button
+                      onClick={dial}
+                      disabled={!!activeCall}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white font-semibold rounded-lg transition-colors"
+                    >
+                      <Phone className="w-4 h-4" /> Call
+                    </button>
+                    <button
+                      onClick={skip}
+                      disabled={index >= leads.length - 1 || !!activeCall}
+                      className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-gray-300 rounded-lg transition-colors text-sm"
+                    >
+                      <SkipForward className="w-4 h-4" /> Skip
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

@@ -5,6 +5,11 @@ import { useRouter } from 'next/navigation'
 import { Phone, PhoneIncoming, PhoneOutgoing, Headphones } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 
+function fmtAvg(secs: number | null) {
+  if (secs === null) return '—'
+  return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`
+}
+
 interface AgentStatus {
   id: string
   name: string
@@ -17,7 +22,11 @@ interface AgentStatus {
     started_at: string
     telnyx_call_control_id: string | null
   } | null
-  callsToday: number
+  callsToday:      number
+  outboundToday:   number
+  inboundToday:    number
+  avgTalkOutbound: number | null
+  avgTalkInbound:  number | null
 }
 
 const STATUS_CONFIG: Record<string, { dot: string; label: string; text: string }> = {
@@ -173,9 +182,25 @@ export default function MonitorPage() {
                 </div>
               )}
 
-              <p className="text-gray-600 text-xs mt-3">
-                {a.callsToday} call{a.callsToday !== 1 ? 's' : ''} today
-              </p>
+              {/* Today's call stats */}
+              <div className="mt-3 pt-3 border-t border-gray-700/60 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500 flex items-center gap-1"><PhoneOutgoing className="w-3 h-3" /> Out</span>
+                  <span className="text-gray-300 font-medium">{a.outboundToday}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500 flex items-center gap-1"><PhoneIncoming className="w-3 h-3" /> In</span>
+                  <span className="text-gray-300 font-medium">{a.inboundToday}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500">Avg out</span>
+                  <span className="text-gray-400 font-mono">{fmtAvg(a.avgTalkOutbound)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500">Avg in</span>
+                  <span className="text-gray-400 font-mono">{fmtAvg(a.avgTalkInbound)}</span>
+                </div>
+              </div>
             </div>
           )
         })}

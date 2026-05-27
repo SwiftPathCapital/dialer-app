@@ -47,6 +47,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const dialingRef = useRef(false)
   const prevCallRef = useRef<ActiveCall | null>(null)
   const callActiveAtRef = useRef<number | null>(null)
+  const outboundCallIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!agent) return
@@ -218,6 +219,8 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
         const { call } = notification
         if (notification.type === 'callUpdate') {
           if (call.state === 'ringing') {
+            // If this call.id matches our outbound call, this is SIP 180 Ringing — ignore it
+            if (outboundCallIdRef.current === call.id) return
             console.log('[Telnyx] ringing call.options:', JSON.stringify(call.options))
             const callerName: string = call.options?.remoteCallerName || ''
             const groupName = callerName.startsWith('GROUP:') ? callerName.slice(6) : undefined
@@ -294,6 +297,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
             }
           } else if (call.state === 'hangup' || call.state === 'destroy') {
             stopRing()
+            outboundCallIdRef.current = null
             setActiveCall(null)
             setMuted(false)
             const audio = document.getElementById('telnyx-remote-audio') as HTMLAudioElement
@@ -331,6 +335,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       destinationNumber: number,
       callerNumber: agent.extension || agent.sip_username,
     })
+    outboundCallIdRef.current = call.id
 
     // Log outbound call with call control ID so call history and admin monitor work
     fetch('/api/calls', {
@@ -363,6 +368,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     if (!activeCall?.telnyxCall) return
     activeCall.telnyxCall.hangup()
     stopRing()
+    outboundCallIdRef.current = null
     setActiveCall(null)
     setMuted(false)
   }
