@@ -51,6 +51,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const clientRef = useRef<any>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
+  const ringGainRef = useRef<GainNode | null>(null)   // master gain — zeroed instantly on stopRing
   const ringTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const groupsRef = useRef<Array<{ id: string; name: string; phone_number: string }>>([])
@@ -433,10 +434,17 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     const ctx = new AudioContext()
     audioCtxRef.current = ctx
 
+    // Master gain node — zeroing this in stopRing() cuts audio instantly
+    // rather than waiting for AudioContext.close() to drain its buffer.
+    const master = ctx.createGain()
+    master.gain.value = 1
+    master.connect(ctx.destination)
+    ringGainRef.current = master
+
     function tone(freqs: number[], duration: number) {
       const gain = ctx.createGain()
       gain.gain.value = 0.12
-      gain.connect(ctx.destination)
+      gain.connect(master)          // ← route through master, not directly to destination
       freqs.forEach(freq => {
         const osc = ctx.createOscillator()
         osc.frequency.value = freq
@@ -466,6 +474,12 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
 
   function stopRing() {
     if (ringTimerRef.current) { clearTimeout(ringTimerRef.current); ringTimerRef.current = null }
+    // Zero the master gain synchronously — this is processed by the audio engine
+    // at exactly currentTime (i.e. right now), giving a clean cut-off with no buffer drain.
+    if (ringGainRef.current && audioCtxRef.current) {
+      try { ringGainRef.current.gain.setValueAtTime(0, audioCtxRef.current.currentTime) } catch {}
+    }
+    ringGainRef.current = null
     if (audioCtxRef.current) { audioCtxRef.current.close().catch(() => {}); audioCtxRef.current = null }
   }
 
