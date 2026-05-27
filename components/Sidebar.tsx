@@ -3,23 +3,25 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2 } from 'lucide-react'
+import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import { supabase } from '@/lib/supabase'
 import Tour from '@/components/Tour'
 
 const NAV = [
-  { href: '/dashboard', icon: Phone, label: 'Softphone', dataTour: 'nav-softphone' },
-  { href: '/sms', icon: MessageSquare, label: 'SMS', dataTour: 'nav-sms' },
-  { href: '/voicemail', icon: Voicemail, label: 'Voicemail', dataTour: 'nav-voicemail' },
+  { href: '/dashboard',  icon: Phone,         label: 'Softphone',  dataTour: 'nav-softphone' },
+  { href: '/sms',        icon: MessageSquare, label: 'SMS',        dataTour: 'nav-sms' },
+  { href: '/voicemail',  icon: Voicemail,     label: 'Voicemail',  dataTour: 'nav-voicemail' },
+  { href: '/callbacks',  icon: CalendarClock, label: 'Callbacks',  dataTour: '' },
 ]
 
 const ADMIN_NAV = [
-  { href: '/admin/monitor',   icon: Activity,       label: 'Monitor',    dataTour: 'nav-monitor' },
-  { href: '/admin/analytics', icon: BarChart2,       label: 'Analytics',  dataTour: '' },
-  { href: '/admin/calls',     icon: PhoneCall,       label: 'Call Center',dataTour: 'nav-calls' },
-  { href: '/admin/groups',    icon: Users,           label: 'Groups',     dataTour: 'nav-groups' },
-  { href: '/admin/config',    icon: SlidersHorizontal, label: 'Config',   dataTour: '' },
+  { href: '/admin/monitor',    icon: Activity,          label: 'Monitor',    dataTour: 'nav-monitor' },
+  { href: '/admin/analytics',  icon: BarChart2,          label: 'Analytics',  dataTour: '' },
+  { href: '/admin/calls',      icon: PhoneCall,          label: 'Call Center',dataTour: 'nav-calls' },
+  { href: '/admin/callbacks',  icon: CalendarClock,      label: 'Callbacks',  dataTour: '' },
+  { href: '/admin/groups',     icon: Users,              label: 'Groups',     dataTour: 'nav-groups' },
+  { href: '/admin/config',     icon: SlidersHorizontal,  label: 'Config',     dataTour: '' },
 ]
 
 const STATUS_OPTIONS = [

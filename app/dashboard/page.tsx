@@ -37,6 +37,10 @@ export default function DashboardPage() {
   const [inboundLead, setInboundLead] = useState<Lead | null>(null)
   const [dialedLead, setDialedLead] = useState<Lead | null>(null)
   const [callLeadLoading, setCallLeadLoading] = useState(false)
+  const [callbackPicker, setCallbackPicker] = useState<{ lead: Lead } | null>(null)
+  const [callbackDate, setCallbackDate] = useState('')
+  const [callbackTime, setCallbackTime] = useState('')
+  const [callbackNotes, setCallbackNotes] = useState('')
   const prevCallRef = useRef(activeCall)
 
   useEffect(() => {
@@ -104,12 +108,27 @@ export default function DashboardPage() {
     }
   }, [activeCall])
 
-  async function saveDisposition(disp: string) {
+  function selectDisposition(disp: string) {
+    if (!wrapup || !agent) return
+    if (disp === 'Callback') {
+      // Pre-fill date to tomorrow at 10am
+      const tomorrow = new Date()
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      setCallbackDate(tomorrow.toISOString().slice(0, 10))
+      setCallbackTime('10:00')
+      setCallbackNotes(notes.trim())
+      setCallbackPicker({ lead: wrapup.lead })
+      return
+    }
+    saveDisposition(disp, null)
+  }
+
+  async function saveDisposition(disp: string, callbackAt: string | null) {
     if (!wrapup || !agent) return
     setSaving(true)
     const { lead: calledLead } = wrapup
 
-    await Promise.all([
+    const requests: Promise<unknown>[] = [
       fetch('/api/leads', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -126,11 +145,34 @@ export default function DashboardPage() {
           notes: notes.trim() || null,
         }),
       }),
-    ])
+    ]
+
+    if (disp === 'Callback' && callbackAt) {
+      requests.push(
+        fetch('/api/callbacks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lead_id: calledLead.id,
+            lead_phone: calledLead.phone,
+            lead_name: calledLead.company_name || [calledLead.first_name, calledLead.last_name].filter(Boolean).join(' ') || calledLead.name,
+            agent_id: agent.id,
+            scheduled_at: callbackAt,
+            notes: callbackNotes.trim() || notes.trim() || null,
+          }),
+        })
+      )
+    }
+
+    await Promise.all(requests)
 
     setSaving(false)
     setWrapup(null)
     setNotes('')
+    setCallbackPicker(null)
+    setCallbackDate('')
+    setCallbackTime('')
+    setCallbackNotes('')
     setIndex(i => Math.min(i + 1, leads.length - 1))
   }
 
@@ -179,9 +221,70 @@ export default function DashboardPage() {
         </div>
 
         {/* Right: wrap-up OR new-lead form OR preview dialer */}
-        {(lead || activeLead || (activeCall && !callLeadLoading)) && (
+        {(wrapup || lead || activeLead || (activeCall && !callLeadLoading)) && (
           <div className="flex-1 min-w-72 space-y-4">
-            {wrapup ? (
+            {wrapup && callbackPicker ? (
+              /* ── Callback scheduler ── */
+              <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 space-y-4">
+                <div>
+                  <p className="text-white font-semibold text-base">Schedule Callback</p>
+                  <p className="text-gray-500 text-sm">{callbackPicker.lead.company_name || [callbackPicker.lead.first_name, callbackPicker.lead.last_name].filter(Boolean).join(' ') || callbackPicker.lead.name}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-gray-400 text-xs uppercase tracking-widest mb-1.5 block">Date</label>
+                    <input
+                      type="date"
+                      value={callbackDate}
+                      onChange={e => setCallbackDate(e.target.value)}
+                      className="w-full bg-gray-900 text-white text-sm rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 border border-gray-700"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-gray-400 text-xs uppercase tracking-widest mb-1.5 block">Time</label>
+                    <input
+                      type="time"
+                      value={callbackTime}
+                      onChange={e => setCallbackTime(e.target.value)}
+                      className="w-full bg-gray-900 text-white text-sm rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 border border-gray-700"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-gray-400 text-xs uppercase tracking-widest mb-1.5 block">Notes</label>
+                  <textarea
+                    value={callbackNotes}
+                    onChange={e => setCallbackNotes(e.target.value)}
+                    placeholder="What to discuss on callback…"
+                    rows={3}
+                    className="w-full bg-gray-900 text-white text-sm rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600 resize-none"
+                  />
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      if (!callbackDate || !callbackTime) return
+                      const iso = new Date(`${callbackDate}T${callbackTime}`).toISOString()
+                      setWrapup(prev => prev ? { ...prev } : null)
+                      saveDisposition('Callback', iso)
+                    }}
+                    disabled={saving || !callbackDate || !callbackTime}
+                    className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors text-sm"
+                  >
+                    {saving ? 'Saving…' : 'Schedule Callback'}
+                  </button>
+                  <button
+                    onClick={() => setCallbackPicker(null)}
+                    className="px-4 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors text-sm"
+                  >
+                    Back
+                  </button>
+                </div>
+              </div>
+            ) : wrapup ? (
               /* ── Wrap-up: notes + disposition ── */
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 space-y-4">
                 <div>
@@ -210,7 +313,7 @@ export default function DashboardPage() {
                     {DISPOSITIONS.map(({ label, color }) => (
                       <button
                         key={label}
-                        onClick={() => saveDisposition(label)}
+                        onClick={() => selectDisposition(label)}
                         disabled={saving}
                         className={`${color} disabled:opacity-50 text-white text-sm font-medium py-2.5 rounded-lg transition-colors`}
                       >

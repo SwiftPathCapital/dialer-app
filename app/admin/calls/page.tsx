@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { PhoneIncoming, PhoneOutgoing, Clock, Voicemail, Pencil, Check, X, Play, Pause, MicVocal } from 'lucide-react'
+import { PhoneIncoming, PhoneOutgoing, Clock, Voicemail, Pencil, Check, X, Play, Pause, MicVocal, Trash2 } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 
 interface CallRow {
@@ -44,15 +44,32 @@ interface CallRecording {
   agents: { id: string; name: string } | null
 }
 
-const DISPOSITIONS = ['Interested', 'Callback', 'Not Interested', 'No Answer', 'Wrong Number', 'DNC']
+const DISPOSITIONS = [
+  'Interested', 'Callback', 'App Received', 'Docs Received',
+  'Pending App & Docs', 'Deal Funded', 'Not Interested',
+  'No Answer', 'Left Voicemail', 'Wrong Number', 'DNC',
+]
 
 const DISPO_COLORS: Record<string, string> = {
-  'Interested':     'bg-green-900/40 text-green-300',
-  'Callback':       'bg-blue-900/40 text-blue-300',
-  'Not Interested': 'bg-red-900/40 text-red-300',
-  'No Answer':      'bg-gray-700 text-gray-400',
-  'Wrong Number':   'bg-yellow-900/40 text-yellow-300',
-  'DNC':            'bg-orange-900/40 text-orange-300',
+  'Interested':         'bg-green-900/40 text-green-300',
+  'Callback':           'bg-blue-900/40 text-blue-300',
+  'App Received':       'bg-teal-900/40 text-teal-300',
+  'Docs Received':      'bg-indigo-900/40 text-indigo-300',
+  'Pending App & Docs': 'bg-amber-900/40 text-amber-300',
+  'Deal Funded':        'bg-emerald-900/40 text-emerald-300',
+  'Not Interested':     'bg-red-900/40 text-red-300',
+  'No Answer':          'bg-gray-700 text-gray-400',
+  'Left Voicemail':     'bg-purple-900/40 text-purple-300',
+  'Wrong Number':       'bg-yellow-900/40 text-yellow-300',
+  'DNC':                'bg-orange-900/40 text-orange-300',
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  'completed': 'bg-green-900/40 text-green-400',
+  'active':    'bg-blue-900/40 text-blue-400',
+  'no-answer': 'bg-gray-700 text-gray-500',
+  'initiated': 'bg-gray-700 text-gray-500',
+  'failed':    'bg-red-900/40 text-red-400',
 }
 
 function fmt(s: number) {
@@ -94,8 +111,11 @@ function EditableCall({ call, onSaved }: { call: CallRow; onSaved: () => void })
               </span>
             )}
           </div>
-          <p className="text-gray-500 text-xs">
-            {call.agents?.name || 'No agent'} · {new Date(call.started_at).toLocaleString()} · {call.status}
+          <p className="text-gray-500 text-xs flex items-center gap-1.5 flex-wrap">
+            {call.agents?.name || 'No agent'} · {new Date(call.started_at).toLocaleString()}
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${STATUS_COLORS[call.status] || 'bg-gray-700 text-gray-400'}`}>
+              {call.status}
+            </span>
           </p>
         </div>
         {call.duration_seconds != null && call.duration_seconds > 0 && (
@@ -258,6 +278,15 @@ export default function AdminCallsPage() {
     setRecordings(Array.isArray(data) ? data : [])
   }
 
+  async function deleteVoicemail(id: string) {
+    await fetch('/api/admin/recordings', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    setRecordings(prev => prev.filter(r => r.id !== id))
+  }
+
   async function loadCallRecordings(presetIdx: number) {
     setRecLoading(true)
     const preset = DURATION_PRESETS[presetIdx]
@@ -364,6 +393,13 @@ export default function AdminCallsPage() {
                       <p className="text-gray-400 text-xs mt-1 italic">"{rec.transcription}"</p>
                     )}
                   </div>
+                  <button
+                    onClick={() => deleteVoicemail(rec.id)}
+                    title="Delete voicemail"
+                    className="text-gray-600 hover:text-red-400 transition-colors shrink-0"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
                 <div className="pl-11">
                   <AudioPlayer url={rec.recording_url} />
