@@ -34,7 +34,9 @@ export default function ActiveCall({ lead }: { lead?: Lead | null }) {
   const mm = String(Math.floor(elapsed / 60)).padStart(2, '0')
   const ss = String(elapsed % 60).padStart(2, '0')
 
-  const company = lead ? (lead.company_name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.name) : null
+  const company = lead
+    ? (lead.company_name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.name)
+    : (activeCall.callerName || null)
   const contact = lead?.company_name ? [lead.first_name, lead.last_name].filter(Boolean).join(' ') : null
 
   return (

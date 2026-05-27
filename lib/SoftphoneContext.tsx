@@ -11,6 +11,7 @@ interface ActiveCall {
   direction: 'inbound' | 'outbound'
   remoteNumber: string
   groupName?: string
+  callerName?: string
   state: CallState
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   telnyxCall: any
@@ -235,6 +236,19 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
               telnyxCall: call,
             })
             startRing(groupName ? 'group-inbound' : 'inbound')
+
+            // Look up caller name (leads DB first, then CNAM) and patch it in
+            const lookupDigits = remoteNumber.replace(/\D/g, '')
+            if (lookupDigits) {
+              fetch(`/api/caller-id?phone=${encodeURIComponent(lookupDigits)}`)
+                .then(r => r.json())
+                .then((d: { name?: string | null }) => {
+                  if (d.name) {
+                    setActiveCall(prev => prev ? { ...prev, callerName: d.name! } : null)
+                  }
+                })
+                .catch(() => {})
+            }
 
             // Fallback: if the SIP header didn't carry the GROUP: prefix, look up the
             // group from the DB — the webhook inserts the row before Telnyx sends the INVITE.

@@ -33,7 +33,12 @@ export default function InboundAlert() {
           </span>
         </div>
       )}
-      <p className="text-white text-lg font-semibold mb-4">{activeCall.remoteNumber}</p>
+      {activeCall.callerName && (
+        <p className="text-white text-lg font-semibold leading-tight">{activeCall.callerName}</p>
+      )}
+      <p className={`mb-4 ${activeCall.callerName ? 'text-gray-400 text-sm' : 'text-white text-lg font-semibold'}`}>
+        {activeCall.remoteNumber}
+      </p>
       <div className="flex gap-3">
         <button
           onClick={answerCall}
