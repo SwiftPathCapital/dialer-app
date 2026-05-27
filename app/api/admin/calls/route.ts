@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
   let query = db
     .from('dialer_calls')
     .select('id, direction, from_number, to_number, status, disposition, notes, duration_seconds, started_at, agent_id, group_id, agents(id, name, email)')
+    .not('telnyx_call_control_id', 'is', null)
     .order('started_at', { ascending: false })
     .limit(limit)
 
