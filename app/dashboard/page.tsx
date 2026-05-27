@@ -31,13 +31,14 @@ export default function DashboardPage() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [index, setIndex] = useState(0)
   const [callHistory, setCallHistory] = useState<Call[]>([])
-  const [wrapup, setWrapup] = useState<{ lead: Lead } | null>(null)
+  const [wrapup, setWrapup] = useState<{ lead: Lead | null; phone: string } | null>(null)
+  const [wrapupStep, setWrapupStep] = useState<'notes' | 'dispo'>('notes')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [inboundLead, setInboundLead] = useState<Lead | null>(null)
   const [dialedLead, setDialedLead] = useState<Lead | null>(null)
   const [callLeadLoading, setCallLeadLoading] = useState(false)
-  const [callbackPicker, setCallbackPicker] = useState<{ lead: Lead } | null>(null)
+  const [callbackPicker, setCallbackPicker] = useState<{ lead: Lead | null } | null>(null)
   const [callbackDate, setCallbackDate] = useState('')
   const [callbackTime, setCallbackTime] = useState('')
   const [callbackNotes, setCallbackNotes] = useState('')
@@ -103,8 +104,12 @@ export default function DashboardPage() {
       // Inbound calls that ended while still ringing mean another agent answered — skip dispo
       if (prev.direction === 'inbound' && prev.state === 'ringing') { setDialedLead(null); return }
       const wrapLead = prev.direction === 'outbound' ? (dialedLead || lead) : (inboundLead || lead)
+      const phone = prev.remoteNumber || ''
       setDialedLead(null)
-      if (wrapLead) { setWrapup({ lead: wrapLead }); setNotes('') }
+      // Always show wrap-up — even if no lead matched, use phone number as identifier
+      setWrapup({ lead: wrapLead ?? null, phone })
+      setWrapupStep('notes')
+      setNotes('')
     }
   }, [activeCall])
 
@@ -126,28 +131,36 @@ export default function DashboardPage() {
   async function saveDisposition(disp: string, callbackAt: string | null) {
     if (!wrapup || !agent) return
     setSaving(true)
-    const { lead: calledLead } = wrapup
+    const { lead: calledLead, phone: calledPhone } = wrapup
 
-    const requests: Promise<unknown>[] = [
-      fetch('/api/leads', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: calledLead.id, status: disp }),
-      }),
+    const requests: Promise<unknown>[] = []
+
+    // Only update lead status / disposition if we have an actual lead record
+    if (calledLead) {
+      requests.push(
+        fetch('/api/leads', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: calledLead.id, status: disp }),
+        })
+      )
+    }
+
+    requests.push(
       fetch('/api/calls/disposition', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          lead_phone: calledLead.phone,
-          lead_id: calledLead.id,
+          lead_phone: calledLead?.phone || calledPhone,
+          lead_id: calledLead?.id || null,
           agent_id: agent.id,
           disposition: disp,
           notes: notes.trim() || null,
         }),
-      }),
-    ]
+      })
+    )
 
-    if (disp === 'Callback' && callbackAt) {
+    if (disp === 'Callback' && callbackAt && calledLead) {
       requests.push(
         fetch('/api/callbacks', {
           method: 'POST',
@@ -168,6 +181,7 @@ export default function DashboardPage() {
 
     setSaving(false)
     setWrapup(null)
+    setWrapupStep('notes')
     setNotes('')
     setCallbackPicker(null)
     setCallbackDate('')
@@ -228,7 +242,11 @@ export default function DashboardPage() {
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 space-y-4">
                 <div>
                   <p className="text-white font-semibold text-base">Schedule Callback</p>
-                  <p className="text-gray-500 text-sm">{callbackPicker.lead.company_name || [callbackPicker.lead.first_name, callbackPicker.lead.last_name].filter(Boolean).join(' ') || callbackPicker.lead.name}</p>
+                  <p className="text-gray-500 text-sm">
+                    {callbackPicker.lead
+                      ? (callbackPicker.lead.company_name || [callbackPicker.lead.first_name, callbackPicker.lead.last_name].filter(Boolean).join(' ') || callbackPicker.lead.name)
+                      : wrapup.phone}
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -268,7 +286,6 @@ export default function DashboardPage() {
                     onClick={() => {
                       if (!callbackDate || !callbackTime) return
                       const iso = new Date(`${callbackDate}T${callbackTime}`).toISOString()
-                      setWrapup(prev => prev ? { ...prev } : null)
                       saveDisposition('Callback', iso)
                     }}
                     disabled={saving || !callbackDate || !callbackTime}
@@ -284,31 +301,77 @@ export default function DashboardPage() {
                   </button>
                 </div>
               </div>
-            ) : wrapup ? (
-              /* ── Wrap-up: notes + disposition ── */
-              <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 space-y-4">
+
+            ) : wrapup && wrapupStep === 'notes' ? (
+              /* ── Step 1: Notes ── */
+              <div className="bg-gray-800 rounded-xl border border-yellow-700/60 p-5 space-y-4">
                 <div>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-yellow-400 text-xs font-bold uppercase tracking-widest">Step 1 of 2</span>
+                    <span className="text-gray-600 text-xs">— Call Notes</span>
+                  </div>
                   <p className="text-white font-semibold text-base">
-                    {wrapup.lead.company_name || [wrapup.lead.first_name, wrapup.lead.last_name].filter(Boolean).join(' ') || wrapup.lead.name}
+                    {wrapup.lead
+                      ? (wrapup.lead.company_name || [wrapup.lead.first_name, wrapup.lead.last_name].filter(Boolean).join(' ') || wrapup.lead.name || wrapup.phone)
+                      : wrapup.phone}
                   </p>
-                  <p className="text-gray-500 text-sm">Call ended · add notes then select a disposition</p>
+                  <p className="text-gray-500 text-sm mt-0.5">Add your call notes, then continue to set a disposition.</p>
                 </div>
 
-                {/* Notes */}
                 <div>
                   <label className="text-gray-400 text-xs uppercase tracking-widest mb-1.5 block">Call Notes</label>
                   <textarea
                     value={notes}
                     onChange={e => setNotes(e.target.value)}
                     placeholder="What happened on this call? (saved to CRM)"
-                    rows={4}
-                    className="w-full bg-gray-900 text-white text-sm rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600 resize-none"
+                    rows={5}
+                    autoFocus
+                    className="w-full bg-gray-900 text-white text-sm rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-yellow-500 placeholder-gray-600 resize-none"
                   />
                 </div>
 
+                <button
+                  onClick={() => setWrapupStep('dispo')}
+                  className="w-full py-2.5 bg-yellow-600 hover:bg-yellow-500 text-white font-semibold rounded-lg transition-colors text-sm"
+                >
+                  Save Notes &amp; Continue →
+                </button>
+              </div>
+
+            ) : wrapup && wrapupStep === 'dispo' ? (
+              /* ── Step 2: Disposition ── */
+              <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-green-400 text-xs font-bold uppercase tracking-widest">Step 2 of 2</span>
+                      <span className="text-gray-600 text-xs">— Disposition</span>
+                    </div>
+                    <p className="text-white font-semibold text-base">
+                      {wrapup.lead
+                        ? (wrapup.lead.company_name || [wrapup.lead.first_name, wrapup.lead.last_name].filter(Boolean).join(' ') || wrapup.lead.name || wrapup.phone)
+                        : wrapup.phone}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setWrapupStep('notes')}
+                    className="text-xs text-gray-500 hover:text-gray-300 shrink-0 mt-1 transition-colors"
+                  >
+                    ← Edit Notes
+                  </button>
+                </div>
+
+                {/* Notes preview */}
+                {notes.trim() && (
+                  <div className="bg-gray-900/60 rounded-lg px-3 py-2.5 border border-gray-700">
+                    <p className="text-gray-500 text-xs uppercase tracking-widest mb-1">Notes</p>
+                    <p className="text-gray-300 text-sm whitespace-pre-wrap">{notes.trim()}</p>
+                  </div>
+                )}
+
                 {/* Dispositions */}
                 <div>
-                  <label className="text-gray-400 text-xs uppercase tracking-widest mb-1.5 block">Disposition</label>
+                  <label className="text-gray-400 text-xs uppercase tracking-widest mb-2 block">Select Disposition</label>
                   <div className="grid grid-cols-2 gap-2">
                     {DISPOSITIONS.map(({ label, color }) => (
                       <button
@@ -317,12 +380,13 @@ export default function DashboardPage() {
                         disabled={saving}
                         className={`${color} disabled:opacity-50 text-white text-sm font-medium py-2.5 rounded-lg transition-colors`}
                       >
-                        {label}
+                        {saving ? '…' : label}
                       </button>
                     ))}
                   </div>
                 </div>
               </div>
+
             ) : activeCall && !callLeadLoading && !activeLead ? (
               /* ── Unknown caller: quick lead creation form ── */
               <NewLeadForm
