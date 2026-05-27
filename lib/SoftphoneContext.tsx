@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
-import { Agent } from './types'
+import { Agent, AgentStatus } from './types'
 
 type CallState = 'idle' | 'ringing' | 'active' | 'held'
 type RingType = 'inbound' | 'outbound' | 'group-inbound'
@@ -49,6 +49,10 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const prevCallRef = useRef<ActiveCall | null>(null)
   const callActiveAtRef = useRef<number | null>(null)
   const outboundCallIdRef = useRef<string | null>(null)
+  // Mirrors activeCall state so event-handler closures can read it without staleness
+  const activeCallRef = useRef<ActiveCall | null>(null)
+  // Status the agent had before the call started, so we can restore it afterwards
+  const preCallStatusRef = useRef<AgentStatus>('available')
 
   useEffect(() => {
     if (!agent) return
@@ -64,6 +68,11 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     }).catch(() => {})
   }, [agent?.id])
 
+  // Keep ref in sync so event-handler closures always see the current call
+  useEffect(() => {
+    activeCallRef.current = activeCall
+  }, [activeCall])
+
   // Play hangup tone + write duration to DB when a call ends.
   useEffect(() => {
     const prev = prevCallRef.current
@@ -76,6 +85,17 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
 
     if (prev !== null && activeCall === null) {
       playHangupTone()
+
+      // Restore agent status to whatever it was before the call started
+      if (agent?.id) {
+        const restoredStatus = preCallStatusRef.current
+        fetch('/api/agents', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: agent.id, status: restoredStatus }),
+        }).catch(() => {})
+        setAgent(prev2 => prev2 ? { ...prev2, status: restoredStatus } : prev2)
+      }
 
       // For outbound calls, the TeXML status webhook never fires, so we track duration
       // in the browser and write it back ourselves.
@@ -228,6 +248,14 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
           if (call.state === 'ringing') {
             // If this call.id matches our outbound call, this is SIP 180 Ringing — ignore it
             if (outboundCallIdRef.current === call.id) return
+
+            // If we're already on an active call, auto-reject this new inbound leg
+            // (happens when a group ring arrives while we're on an outbound call)
+            if (activeCallRef.current !== null) {
+              console.log('[Telnyx] already on a call — rejecting new inbound leg', call.id)
+              try { call.hangup() } catch {}
+              return
+            }
             console.log('[Telnyx] ringing call.options:', JSON.stringify(call.options))
             const callerName: string = call.options?.remoteCallerName || ''
             const groupName = callerName.startsWith('GROUP:') ? callerName.slice(6) : undefined
@@ -316,6 +344,13 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
               audio.play().catch(console.error)
             }
           } else if (call.state === 'hangup' || call.state === 'destroy') {
+            // Only tear down state for the call we're actually tracking.
+            // A hangup event for a rejected/cancelled parallel-ring leg must not
+            // wipe out the current active call.
+            if (activeCallRef.current && call.id !== activeCallRef.current.id) {
+              console.log('[Telnyx] ignoring hangup for non-active leg', call.id)
+              return
+            }
             stopRing()
             outboundCallIdRef.current = null
             setActiveCall(null)
@@ -346,10 +381,22 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     }
   }, [agent?.sip_username, agent?.sip_password])
 
+  function setAgentBusy() {
+    if (!agent?.id) return
+    preCallStatusRef.current = agent.status ?? 'available'
+    fetch('/api/agents', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: agent.id, status: 'busy' }),
+    }).catch(() => {})
+    setAgent(prev => prev ? { ...prev, status: 'busy' } : prev)
+  }
+
   function makeCall(number: string) {
     if (!clientRef.current || !agent) return
     if (dialingRef.current) return
     dialingRef.current = true
+    setAgentBusy()
 
     const call = clientRef.current.newCall({
       destinationNumber: number,
@@ -381,6 +428,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
 
   function answerCall() {
     if (!activeCall?.telnyxCall) return
+    setAgentBusy()
     activeCall.telnyxCall.answer()
   }
 

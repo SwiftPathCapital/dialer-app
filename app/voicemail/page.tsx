@@ -37,6 +37,10 @@ export default function VoicemailPage() {
     setVoicemails(prev => prev.map(v => v.id === id ? { ...v, listened: true } : v))
   }
 
+  function removeVoicemail(id: string) {
+    setVoicemails(prev => prev.filter(v => v.id !== id))
+  }
+
   if (!agent) return null
 
   const unheard = voicemails.filter(v => !v.listened).length
@@ -62,7 +66,7 @@ export default function VoicemailPage() {
       ) : (
         <div className="space-y-3">
           {voicemails.map(vm => (
-            <VoicemailPlayer key={vm.id} voicemail={vm} onListened={markListened} />
+            <VoicemailPlayer key={vm.id} voicemail={vm} onListened={markListened} onDelete={removeVoicemail} />
           ))}
         </div>
       )}

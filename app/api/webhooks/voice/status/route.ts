@@ -4,6 +4,14 @@ import { getAppUrl } from '@/lib/telnyx'
 
 const XML = { 'Content-Type': 'text/xml' }
 
+/** Returns true if the greeting URL is in a format Telnyx <Play> can handle (mp3, wav, ogg).
+ *  Strips any query-string cache-busters before checking the extension. */
+function isPlayableGreeting(url: string | null | undefined): url is string {
+  if (!url) return false
+  const path = url.split('?')[0].toLowerCase()
+  return path.endsWith('.mp3') || path.endsWith('.wav') || path.endsWith('.ogg')
+}
+
 function texml(content: string) {
   return new NextResponse(`<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n${content}\n</Response>`, { headers: XML })
 }
@@ -58,7 +66,7 @@ async function handle(req: NextRequest) {
             .not('voicemail_greeting_url', 'is', null)
             .limit(1)
           const gUrl = agentsWithGreeting?.[0]?.voicemail_greeting_url
-          if (gUrl && !gUrl.endsWith('.webm')) {
+          if (isPlayableGreeting(gUrl)) {
             greetingXml = `<Play>${gUrl}</Play>`
           }
         }
@@ -76,7 +84,7 @@ async function handle(req: NextRequest) {
         .single()
 
       const url = agent?.voicemail_greeting_url
-      const greetingXml = url && !url.endsWith('.webm')
+      const greetingXml = isPlayableGreeting(url)
         ? `<Play>${url}</Play>`
         : `<Say>Please leave a message after the beep.</Say>`
 

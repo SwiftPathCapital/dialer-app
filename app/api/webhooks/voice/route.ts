@@ -4,6 +4,14 @@ import { getAppUrl, agentSipUri } from '@/lib/telnyx'
 
 const XML = { 'Content-Type': 'text/xml' }
 
+/** Returns true if the greeting URL is in a format Telnyx <Play> can handle (mp3, wav, ogg).
+ *  Strips any query-string cache-busters before checking the extension. */
+function isPlayableGreeting(url: string | null | undefined): url is string {
+  if (!url) return false
+  const path = url.split('?')[0].toLowerCase()
+  return path.endsWith('.mp3') || path.endsWith('.wav') || path.endsWith('.ogg')
+}
+
 function texml(content: string) {
   return new NextResponse(`<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n${content}\n</Response>`, { headers: XML })
 }
@@ -105,7 +113,7 @@ async function handle(req: NextRequest) {
         .eq('telnyx_call_control_id', callSid)
 
       const gUrl = directAgent.voicemail_greeting_url
-      const greetingXml = gUrl && !gUrl.endsWith('.webm')
+      const greetingXml = isPlayableGreeting(gUrl)
         ? `<Play>${gUrl}</Play>`
         : `<Say>Please leave a message after the beep.</Say>`
       return texml(`${greetingXml}\n  <Record maxLength="120" recordingStatusCallback="${BASE_URL}/api/webhooks/voice/recording"/>`)

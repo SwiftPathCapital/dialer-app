@@ -1,19 +1,21 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Play, Pause, Volume2 } from 'lucide-react'
+import { Play, Pause, Volume2, Trash2 } from 'lucide-react'
 import { Voicemail } from '@/lib/types'
 
 interface Props {
   voicemail: Voicemail
   onListened: (id: string) => void
+  onDelete: (id: string) => void
 }
 
-export default function VoicemailPlayer({ voicemail, onListened }: Props) {
+export default function VoicemailPlayer({ voicemail, onListened, onDelete }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [deleting, setDeleting] = useState(false)
 
   function toggle() {
     const audio = audioRef.current
@@ -43,6 +45,18 @@ export default function VoicemailPlayer({ voicemail, onListened }: Props) {
     setProgress(parseFloat(e.target.value))
   }
 
+  async function handleDelete() {
+    if (!confirm('Delete this voicemail?')) return
+    setDeleting(true)
+    try {
+      await fetch(`/api/voicemail?id=${voicemail.id}`, { method: 'DELETE' })
+      onDelete(voicemail.id)
+    } catch (err) {
+      console.error(err)
+      setDeleting(false)
+    }
+  }
+
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
   return (
@@ -52,11 +66,19 @@ export default function VoicemailPlayer({ voicemail, onListened }: Props) {
           <p className="text-white font-medium">{voicemail.from_number}</p>
           <p className="text-gray-400 text-xs">{new Date(voicemail.created_at).toLocaleString()}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {!voicemail.listened && (
             <span className="w-2 h-2 rounded-full bg-blue-500" title="Unheard" />
           )}
           <Volume2 className="w-4 h-4 text-gray-500" />
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            title="Delete voicemail"
+            className="text-gray-500 hover:text-red-400 disabled:opacity-40 transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
