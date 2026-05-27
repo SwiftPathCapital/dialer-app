@@ -16,19 +16,6 @@ async function getParams(req: NextRequest): Promise<URLSearchParams> {
   return req.nextUrl.searchParams
 }
 
-function isBusinessHours(): boolean {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(new Date())
-  const h = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0')
-  const m = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0')
-  const mins = h * 60 + m
-  return mins >= 9 * 60 && mins < 18 * 60 + 30  // 9:00 AM – 6:30 PM ET
-}
-
 async function handle(req: NextRequest) {
   const params = await getParams(req)
 
@@ -43,21 +30,7 @@ async function handle(req: NextRequest) {
 
   console.log('[voice webhook] toDigits:', toDigits)
 
-  // --- Outside business hours: go straight to voicemail ---
-  if (!isBusinessHours()) {
-    await db.from('dialer_calls').insert({
-      direction: 'inbound',
-      from_number: from,
-      to_number: to,
-      status: 'no-answer',
-      telnyx_call_control_id: callSid,
-      started_at: new Date().toISOString(),
-      ended_at: new Date().toISOString(),
-    })
-    return texml(`<Say>You have reached SwiftPath Capital. Our office hours are 9 AM to 6:30 PM Eastern. Please leave a message after the beep.</Say>\n  <Record maxLength="120" recordingStatusCallback="${BASE_URL}/api/webhooks/voice/recording"/>`)
-  }
-
-  // --- 1. Try inbound group match ---
+// --- 1. Try inbound group match ---
   const { data: allGroups } = await db
     .from('inbound_groups')
     .select('*, inbound_group_members(agent_id)')
