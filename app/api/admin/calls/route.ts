@@ -42,7 +42,52 @@ export async function GET(req: NextRequest) {
     query = query.eq('agent_id', agentId)
   }
 
-  const { data, error } = await query
+  const { data: calls, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  if (!calls || calls.length === 0) return NextResponse.json([])
+
+  // ── Enrich with lead name by matching phone digits ─────────────────────────
+  // Extract the unique "remote" number for each call (the non-agent side)
+  const uniqueDigits = [
+    ...new Set(
+      calls.map(c => {
+        const raw = c.direction === 'inbound' ? c.from_number : c.to_number
+        return (raw || '').replace(/\D/g, '')
+      }).filter(d => d.length >= 7)
+    ),
+  ]
+
+  let leadsByDigits = new Map<string, { id: string; display: string }>()
+
+  if (uniqueDigits.length > 0) {
+    // One query with OR-ILIKE for all numbers in this batch
+    const orFilter = uniqueDigits.map(d => `phone.ilike.%${d}%`).join(',')
+    const { data: leads } = await db
+      .from('leads')
+      .select('id, first_name, last_name, name, company_name, phone')
+      .or(orFilter)
+
+    for (const lead of leads || []) {
+      const d = (lead.phone || '').replace(/\D/g, '')
+      if (!d) continue
+      const display =
+        lead.company_name ||
+        [lead.first_name, lead.last_name].filter(Boolean).join(' ') ||
+        lead.name ||
+        ''
+      if (display) leadsByDigits.set(d, { id: lead.id, display })
+    }
+  }
+
+  const enriched = calls.map(c => {
+    const digits = (c.direction === 'inbound' ? c.from_number : c.to_number || '').replace(/\D/g, '')
+    const lead = leadsByDigits.get(digits)
+    return {
+      ...c,
+      lead_name: lead?.display ?? null,
+      lead_id: lead?.id ?? null,
+    }
+  })
+
+  return NextResponse.json(enriched)
 }
