@@ -8,6 +8,7 @@ import Dialpad from '@/components/Dialpad'
 import ActiveCall from '@/components/ActiveCall'
 import StatusSelector from '@/components/StatusSelector'
 import VoicemailGreeting from '@/components/VoicemailGreeting'
+import NewLeadForm from '@/components/NewLeadForm'
 import { Lead, Call } from '@/lib/types'
 
 const DISPOSITIONS = [
@@ -35,6 +36,7 @@ export default function DashboardPage() {
   const [saving, setSaving] = useState(false)
   const [inboundLead, setInboundLead] = useState<Lead | null>(null)
   const [dialedLead, setDialedLead] = useState<Lead | null>(null)
+  const [callLeadLoading, setCallLeadLoading] = useState(false)
   const prevCallRef = useRef(activeCall)
 
   useEffect(() => {
@@ -63,25 +65,30 @@ export default function DashboardPage() {
 
   // Look up inbound caller in leads so we show their info instead of the queue lead
   useEffect(() => {
-    if (!activeCall || activeCall.direction !== 'inbound') { setInboundLead(null); return }
-    setInboundLead(null)  // clear immediately so stale name never shows
+    if (!activeCall || activeCall.direction !== 'inbound') { setInboundLead(null); setCallLeadLoading(false); return }
+    setInboundLead(null)
+    setCallLeadLoading(true)
     const phone = activeCall.remoteNumber.replace(/\D/g, '')
-    if (!phone) return
+    if (!phone) { setCallLeadLoading(false); return }
     fetch(`/api/leads?phone=${encodeURIComponent(phone)}&limit=1`)
       .then(r => r.json())
       .then(d => setInboundLead(Array.isArray(d) && d.length > 0 ? d[0] : null))
       .catch(() => {})
+      .finally(() => setCallLeadLoading(false))
   }, [activeCall?.id, activeCall?.direction])
 
   // For manual outbound dials (Dialpad), dialedLead isn't set by dial() — fetch it by number
   useEffect(() => {
-    if (!activeCall || activeCall.direction !== 'outbound' || dialedLead) return
+    if (!activeCall || activeCall.direction !== 'outbound') return
+    if (dialedLead) { setCallLeadLoading(false); return }
+    setCallLeadLoading(true)
     const phone = activeCall.remoteNumber.replace(/\D/g, '')
-    if (!phone) return
+    if (!phone) { setCallLeadLoading(false); return }
     fetch(`/api/leads?phone=${encodeURIComponent(phone)}&limit=1`)
       .then(r => r.json())
       .then(d => setDialedLead(Array.isArray(d) && d.length > 0 ? d[0] : null))
       .catch(() => {})
+      .finally(() => setCallLeadLoading(false))
   }, [activeCall?.id, activeCall?.direction])
 
   // Detect when a call ends → trigger wrap-up
@@ -171,8 +178,8 @@ export default function DashboardPage() {
           <VoicemailGreeting />
         </div>
 
-        {/* Right: wrap-up OR preview dialer */}
-        {(lead || activeLead) && (
+        {/* Right: wrap-up OR new-lead form OR preview dialer */}
+        {(lead || activeLead || (activeCall && !callLeadLoading)) && (
           <div className="flex-1 min-w-72 space-y-4">
             {wrapup ? (
               /* ── Wrap-up: notes + disposition ── */
@@ -213,6 +220,17 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </div>
+            ) : activeCall && !callLeadLoading && !activeLead ? (
+              /* ── Unknown caller: quick lead creation form ── */
+              <NewLeadForm
+                phone={activeCall.remoteNumber}
+                direction={activeCall.direction}
+                agentId={agent.id}
+                onCreated={newLead => {
+                  if (activeCall.direction === 'inbound') setInboundLead(newLead)
+                  else setDialedLead(newLead)
+                }}
+              />
             ) : (
               /* ── Lead preview card ── */
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">

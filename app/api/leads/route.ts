@@ -88,3 +88,29 @@ export async function PATCH(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
+
+export async function POST(req: NextRequest) {
+  const body = await req.json()
+  const db = createServerClient()
+
+  const { data, error } = await db
+    .from('leads')
+    .insert({
+      phone:          body.phone          || null,
+      first_name:     body.first_name     || null,
+      last_name:      body.last_name      || null,
+      company_name:   body.company_name   || null,
+      email:          body.email          || null,
+      lead_type_label:body.lead_source    || null,
+      lead_type:      body.lead_source    || null,
+      why_funds:      body.notes          || null,
+      status:         'New',
+      assigned_to:    body.agent_id       || null,
+      created_at:     new Date().toISOString(),
+    })
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data)
+}
