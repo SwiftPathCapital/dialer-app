@@ -12,22 +12,37 @@ function rangeStart(range: string): string {
   if (range === 'month') {
     return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
   }
-  return '1970-01-01T00:00:00.000Z' // all time
+  return '1970-01-01T00:00:00.000Z'
 }
 
+const APP_DISPOS = ['App Received', 'App Signed']
+const FUNDED_DISPOS = ['Deal Funded']
+
 export async function GET(req: NextRequest) {
-  const range = req.nextUrl.searchParams.get('range') || 'today'
+  const { searchParams } = new URL(req.url)
+  const range = searchParams.get('range') || 'today'
+  const detail = searchParams.get('detail') // 'all' | 'inbound' | 'outbound' | 'apps' | 'funded'
   const db = createServerClient()
 
-  const { data: calls } = await db
+  // Exclude ghost rows created by old Dialpad double-POST bug (null telnyx_call_control_id)
+  const baseQuery = db
     .from('dialer_calls')
-    .select('direction, disposition, status')
+    .select('direction, disposition, status, from_number, to_number, started_at, duration_seconds, agents(id, name)')
     .gte('started_at', rangeStart(range))
+    .not('telnyx_call_control_id', 'is', null)
 
+  const { data: calls } = await baseQuery
   if (!calls) return NextResponse.json({ error: 'Query failed' }, { status: 500 })
 
-  const APP_DISPOS = ['App Received', 'App Signed']
-  const FUNDED_DISPOS = ['Deal Funded']
+  // If detail requested, return filtered call list instead of aggregate
+  if (detail) {
+    let subset = calls as typeof calls
+    if (detail === 'inbound') subset = calls.filter(c => c.direction === 'inbound')
+    else if (detail === 'outbound') subset = calls.filter(c => c.direction === 'outbound')
+    else if (detail === 'apps') subset = calls.filter(c => c.disposition && APP_DISPOS.includes(c.disposition))
+    else if (detail === 'funded') subset = calls.filter(c => c.disposition && FUNDED_DISPOS.includes(c.disposition))
+    return NextResponse.json(subset.sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime()))
+  }
 
   const tally = (subset: typeof calls) => {
     const counts: Record<string, number> = {}

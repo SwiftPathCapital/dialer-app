@@ -2,10 +2,11 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { PhoneIncoming, PhoneOutgoing, Phone, FileText, BadgeDollarSign } from 'lucide-react'
+import { PhoneIncoming, PhoneOutgoing, Phone, FileText, BadgeDollarSign, X, Clock } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 
 type Range = 'today' | 'week' | 'month' | 'all'
+type DetailKey = 'all' | 'inbound' | 'outbound' | 'apps' | 'funded'
 
 interface DispoRow { disposition: string; count: number }
 
@@ -19,6 +20,17 @@ interface AnalyticsData {
   }
 }
 
+interface CallDetail {
+  direction: 'inbound' | 'outbound'
+  from_number: string
+  to_number: string
+  started_at: string
+  duration_seconds: number | null
+  disposition: string | null
+  status: string
+  agents: { id: string; name: string } | null
+}
+
 const RANGE_LABELS: Record<Range, string> = {
   today: 'Today',
   week:  'Last 7 Days',
@@ -26,10 +38,19 @@ const RANGE_LABELS: Record<Range, string> = {
   all:   'All Time',
 }
 
+const DETAIL_LABELS: Record<DetailKey, string> = {
+  all:      'All Calls',
+  inbound:  'Inbound Calls',
+  outbound: 'Outbound Calls',
+  apps:     'Apps',
+  funded:   'Funded Deals',
+}
+
 const DISPO_COLORS: Record<string, string> = {
   'Interested':         'bg-green-900/50 text-green-300',
   'Callback':           'bg-blue-900/50 text-blue-300',
   'App Received':       'bg-teal-900/50 text-teal-300',
+  'App Signed':         'bg-teal-900/50 text-teal-300',
   'Docs Received':      'bg-indigo-900/50 text-indigo-300',
   'Pending App & Docs': 'bg-amber-900/50 text-amber-300',
   'Deal Funded':        'bg-emerald-900/50 text-emerald-300',
@@ -38,7 +59,10 @@ const DISPO_COLORS: Record<string, string> = {
   'Left Voicemail':     'bg-purple-900/50 text-purple-300',
   'Wrong Number':       'bg-yellow-900/50 text-yellow-300',
   'DNC':                'bg-orange-900/50 text-orange-300',
-  'No Disposition':     'bg-gray-800 text-gray-500',
+}
+
+function fmt(s: number) {
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
 function pct(count: number, total: number) {
@@ -86,12 +110,83 @@ function DispoTable({ rows, total, title, icon }: {
   )
 }
 
+function DetailModal({ detailKey, range, onClose }: { detailKey: DetailKey; range: Range; onClose: () => void }) {
+  const [calls, setCalls] = useState<CallDetail[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    fetch(`/api/admin/analytics?range=${range}&detail=${detailKey}`)
+      .then(r => r.json())
+      .then(d => { setCalls(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [detailKey, range])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700 shrink-0">
+          <div>
+            <h2 className="text-white font-semibold">{DETAIL_LABELS[detailKey]}</h2>
+            <p className="text-gray-500 text-xs mt-0.5">{RANGE_LABELS[range]} · {calls.length} calls</p>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* List */}
+        <div className="overflow-y-auto flex-1">
+          {loading ? (
+            <p className="text-gray-500 text-sm p-5">Loading…</p>
+          ) : calls.length === 0 ? (
+            <p className="text-gray-600 text-sm p-5">No calls in this range.</p>
+          ) : (
+            <div className="divide-y divide-gray-800">
+              {calls.map((call, i) => {
+                const number = call.direction === 'inbound' ? call.from_number : call.to_number
+                return (
+                  <div key={i} className="flex items-center gap-3 px-5 py-3">
+                    <span className={`p-2 rounded-full shrink-0 ${call.direction === 'inbound' ? 'bg-green-900/40 text-green-400' : 'bg-blue-900/40 text-blue-400'}`}>
+                      {call.direction === 'inbound' ? <PhoneIncoming className="w-3.5 h-3.5" /> : <PhoneOutgoing className="w-3.5 h-3.5" />}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-medium">{number}</p>
+                      <p className="text-gray-500 text-xs">
+                        {call.agents?.name || 'No agent'} · {new Date(call.started_at).toLocaleString()}
+                      </p>
+                    </div>
+                    {call.disposition && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${DISPO_COLORS[call.disposition] ?? 'bg-gray-700 text-gray-400'}`}>
+                        {call.disposition}
+                      </span>
+                    )}
+                    {call.duration_seconds != null && call.duration_seconds > 0 && (
+                      <div className="flex items-center gap-1 text-gray-400 text-xs shrink-0">
+                        <Clock className="w-3 h-3" />
+                        {fmt(call.duration_seconds)}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AnalyticsPage() {
   const { agent, agentLoading } = useSoftphone()
   const router = useRouter()
   const [range, setRange] = useState<Range>('today')
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [openDetail, setOpenDetail] = useState<DetailKey | null>(null)
 
   const load = useCallback(async (r: Range) => {
     setLoading(true)
@@ -112,12 +207,12 @@ export default function AnalyticsPage() {
 
   if (!agent) return null
 
-  const summaryCards = data ? [
-    { label: 'Total Calls', value: data.totals.all,     icon: <Phone className="w-4 h-4" />,              color: 'text-white' },
-    { label: 'Inbound',     value: data.totals.inbound, icon: <PhoneIncoming className="w-4 h-4" />,      color: 'text-green-400' },
-    { label: 'Outbound',    value: data.totals.outbound,icon: <PhoneOutgoing className="w-4 h-4" />,      color: 'text-blue-400' },
-    { label: 'Apps',        value: data.totals.apps,    icon: <FileText className="w-4 h-4" />,           color: 'text-teal-400' },
-    { label: 'Funded',      value: data.totals.funded,  icon: <BadgeDollarSign className="w-4 h-4" />,   color: 'text-emerald-400' },
+  const summaryCards: { label: string; value: number; icon: React.ReactNode; color: string; key: DetailKey }[] = data ? [
+    { label: 'Total Calls', value: data.totals.all,      icon: <Phone className="w-4 h-4" />,            color: 'text-white',         key: 'all' },
+    { label: 'Inbound',     value: data.totals.inbound,  icon: <PhoneIncoming className="w-4 h-4" />,    color: 'text-green-400',     key: 'inbound' },
+    { label: 'Outbound',    value: data.totals.outbound, icon: <PhoneOutgoing className="w-4 h-4" />,    color: 'text-blue-400',      key: 'outbound' },
+    { label: 'Apps',        value: data.totals.apps,     icon: <FileText className="w-4 h-4" />,         color: 'text-teal-400',      key: 'apps' },
+    { label: 'Funded',      value: data.totals.funded,   icon: <BadgeDollarSign className="w-4 h-4" />, color: 'text-emerald-400',   key: 'funded' },
   ] : []
 
   return (
@@ -131,9 +226,7 @@ export default function AnalyticsPage() {
               key={r}
               onClick={() => setRange(r)}
               className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                range === r
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-400 hover:text-white'
+                range === r ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
               }`}
             >
               {RANGE_LABELS[r]}
@@ -142,20 +235,24 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {/* Summary cards */}
+      {/* Summary cards — clickable */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         {loading
           ? Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="bg-gray-800 rounded-xl border border-gray-700 p-4 animate-pulse h-20" />
             ))
-          : summaryCards.map(({ label, value, icon, color }) => (
-              <div key={label} className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+          : summaryCards.map(({ label, value, icon, color, key }) => (
+              <button
+                key={label}
+                onClick={() => setOpenDetail(key)}
+                className="bg-gray-800 rounded-xl border border-gray-700 p-4 text-left hover:border-gray-500 hover:bg-gray-750 transition-colors group"
+              >
                 <div className={`flex items-center gap-2 mb-1 ${color}`}>
                   {icon}
-                  <span className="text-xs text-gray-500">{label}</span>
+                  <span className="text-xs text-gray-500 group-hover:text-gray-400">{label}</span>
                 </div>
                 <p className={`text-3xl font-bold ${color}`}>{value}</p>
-              </div>
+              </button>
             ))
         }
       </div>
@@ -189,6 +286,15 @@ export default function AnalyticsPage() {
           />
         </div>
       ) : null}
+
+      {/* Detail modal */}
+      {openDetail && (
+        <DetailModal
+          detailKey={openDetail}
+          range={range}
+          onClose={() => setOpenDetail(null)}
+        />
+      )}
     </div>
   )
 }
