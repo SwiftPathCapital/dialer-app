@@ -42,6 +42,9 @@ export default function DashboardPage() {
   const [callbackDate, setCallbackDate] = useState('')
   const [callbackTime, setCallbackTime] = useState('')
   const [callbackNotes, setCallbackNotes] = useState('')
+  // New-lead modal — persists independently of activeCall so it survives disconnect
+  const [newLeadModal, setNewLeadModal] = useState<{ phone: string; direction: 'inbound' | 'outbound' } | null>(null)
+  const newLeadShownForRef = useRef<string | null>(null) // tracks which call.id triggered the modal
   const prevCallRef = useRef(activeCall)
 
   useEffect(() => {
@@ -95,6 +98,34 @@ export default function DashboardPage() {
       .catch(() => {})
       .finally(() => setCallLeadLoading(false))
   }, [activeCall?.id, activeCall?.direction])
+
+  // Show new-lead modal when an active call has no matching lead record.
+  // Fires once per call (guarded by newLeadShownForRef) and stays open even
+  // after the call disconnects — only Save or Cancel closes it.
+  // Uses raw state (inboundLead/dialedLead) because activeLead is derived below.
+  useEffect(() => {
+    const resolvedLead = activeCall
+      ? (activeCall.direction === 'inbound' ? inboundLead : dialedLead)
+      : null
+    if (
+      activeCall &&
+      !activeCall.groupName &&          // skip group ring-all calls
+      !callLeadLoading &&
+      !resolvedLead &&
+      newLeadShownForRef.current !== activeCall.id
+    ) {
+      newLeadShownForRef.current = activeCall.id
+      setNewLeadModal({ phone: activeCall.remoteNumber, direction: activeCall.direction })
+    }
+  }, [activeCall?.id, callLeadLoading, inboundLead, dialedLead])
+
+  // If a lead gets matched later (agent created one, or lookup finished), close the modal
+  useEffect(() => {
+    if (inboundLead || dialedLead) {
+      setNewLeadModal(null)
+      newLeadShownForRef.current = null
+    }
+  }, [inboundLead?.id, dialedLead?.id])
 
   // Detect when a call ends → trigger wrap-up
   useEffect(() => {
@@ -387,17 +418,6 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-            ) : activeCall && !callLeadLoading && !activeLead ? (
-              /* ── Unknown caller: quick lead creation form ── */
-              <NewLeadForm
-                phone={activeCall.remoteNumber}
-                direction={activeCall.direction}
-                agentId={agent.id}
-                onCreated={newLead => {
-                  if (activeCall.direction === 'inbound') setInboundLead(newLead)
-                  else setDialedLead(newLead)
-                }}
-              />
             ) : (
               /* ── Lead preview card ── */
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
@@ -486,6 +506,27 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+      {/* ── New-lead modal (unknown caller) ────────────────────────────────────
+           Rendered outside the panel flow so it overlays everything.
+           Survives call disconnect — only Save or Cancel dismisses it. */}
+      {newLeadModal && (
+        <NewLeadForm
+          phone={newLeadModal.phone}
+          direction={newLeadModal.direction}
+          agentId={agent.id}
+          onCreated={newLead => {
+            // Attribute the new lead to the right call leg
+            if (newLeadModal.direction === 'inbound') setInboundLead(newLead)
+            else setDialedLead(newLead)
+            setNewLeadModal(null)
+            newLeadShownForRef.current = null
+          }}
+          onCancel={() => {
+            setNewLeadModal(null)
+            newLeadShownForRef.current = null
+          }}
+        />
+      )}
     </div>
   )
 }
