@@ -53,7 +53,7 @@ export async function PATCH(req: NextRequest) {
 
   // When an agent answers an inbound call, attribute it to them
   if (body.action === 'answer') {
-    const { agentId, remoteNumber, groupName, agentCallLegId } = body
+    const { agentId, remoteNumber, groupId, groupName, agentCallLegId } = body
 
     const updates: Record<string, string> = { agent_id: agentId, status: 'active' }
     if (agentCallLegId) updates.agent_call_leg_id = agentCallLegId
@@ -66,8 +66,10 @@ export async function PATCH(req: NextRequest) {
       .is('ended_at', null)
       .is('agent_id', null)
 
-    // Narrow to the specific group if we have the name (avoids matching unrelated calls)
-    if (groupName) {
+    // Narrow to the specific group — prefer the ID (exact), fall back to name lookup
+    if (groupId) {
+      query = query.eq('group_id', groupId)
+    } else if (groupName) {
       const { data: group } = await db
         .from('inbound_groups')
         .select('id')

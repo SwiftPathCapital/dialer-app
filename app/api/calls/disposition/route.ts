@@ -7,9 +7,11 @@ export async function POST(req: NextRequest) {
 
   const digits = lead_phone.replace(/\D/g, '')
 
-  // Find the most recent call involving this number (inbound: from_number, outbound: to_number)
-  // Exclude ghost rows (null telnyx_call_control_id)
-  const { data: outboundCalls } = await db
+  // Find the most recent call involving this number for this specific agent.
+  // Filtering by agent_id prevents two agents calling the same number simultaneously
+  // from having their dispositions land on each other's call records.
+  // Exclude ghost rows (null telnyx_call_control_id).
+  let outboundQuery = db
     .from('dialer_calls')
     .select('id, duration_seconds, started_at')
     .ilike('to_number', `%${digits}%`)
@@ -17,13 +19,21 @@ export async function POST(req: NextRequest) {
     .order('started_at', { ascending: false })
     .limit(1)
 
-  const { data: inboundCalls } = await db
+  let inboundQuery = db
     .from('dialer_calls')
     .select('id, duration_seconds, started_at')
     .ilike('from_number', `%${digits}%`)
     .not('telnyx_call_control_id', 'is', null)
     .order('started_at', { ascending: false })
     .limit(1)
+
+  if (agent_id) {
+    outboundQuery = outboundQuery.eq('agent_id', agent_id)
+    inboundQuery = inboundQuery.eq('agent_id', agent_id)
+  }
+
+  const { data: outboundCalls } = await outboundQuery
+  const { data: inboundCalls } = await inboundQuery
 
   // Pick whichever is more recent
   const candidates = [...(outboundCalls || []), ...(inboundCalls || [])]
