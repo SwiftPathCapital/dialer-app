@@ -56,6 +56,12 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       .then(r => r.json())
       .then(data => { if (Array.isArray(data)) groupsRef.current = data })
       .catch(() => {})
+    // Clean up any outbound calls left stuck 'initiated' from a previous browser session
+    fetch('/api/calls', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'cleanup', agentId: agent.id }),
+    }).catch(() => {})
   }, [agent?.id])
 
   // Play hangup tone + write duration to DB when a call ends.
@@ -81,7 +87,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
         fetch('/api/calls', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'end', callControlId: prev.id, duration_seconds, status }),
+          body: JSON.stringify({ action: 'end', callControlId: prev.id, agentId: agent?.id, duration_seconds, status }),
         }).catch(() => {})
       }
     }

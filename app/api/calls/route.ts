@@ -130,16 +130,55 @@ export async function PATCH(req: NextRequest) {
 
   // Update outbound call status + duration when the WebRTC call ends in the browser
   if (body.action === 'end') {
-    const { callControlId, duration_seconds, status } = body
-    if (!callControlId) return NextResponse.json({ error: 'No callControlId' }, { status: 400 })
+    const { callControlId, agentId, duration_seconds, status } = body
+    const updates = {
+      status: status || 'completed',
+      duration_seconds: duration_seconds ?? null,
+      ended_at: new Date().toISOString(),
+    }
+
+    // Try exact match by call control ID first
+    if (callControlId) {
+      const { data: matched } = await db
+        .from('dialer_calls')
+        .update(updates)
+        .eq('telnyx_call_control_id', callControlId)
+        .select('id')
+      if (matched && matched.length > 0) return NextResponse.json({ ok: true })
+    }
+
+    // Fallback: match most recent initiated/active outbound call for this agent
+    // (handles page-refresh / ID-mismatch cases)
+    if (agentId) {
+      const { data: recent } = await db
+        .from('dialer_calls')
+        .select('id')
+        .eq('agent_id', agentId)
+        .eq('direction', 'outbound')
+        .in('status', ['initiated', 'active'])
+        .is('ended_at', null)
+        .order('started_at', { ascending: false })
+        .limit(1)
+      if (recent && recent.length > 0) {
+        await db.from('dialer_calls').update(updates).eq('id', recent[0].id)
+      }
+    }
+    return NextResponse.json({ ok: true })
+  }
+
+  // Clean up stuck 'initiated' outbound calls from a previous browser session
+  if (body.action === 'cleanup') {
+    const { agentId } = body
+    if (!agentId) return NextResponse.json({ error: 'No agentId' }, { status: 400 })
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
     await db
       .from('dialer_calls')
-      .update({
-        status: status || 'completed',
-        duration_seconds: duration_seconds ?? null,
-        ended_at: new Date().toISOString(),
-      })
-      .eq('telnyx_call_control_id', callControlId)
+      .update({ status: 'no-answer', ended_at: new Date().toISOString() })
+      .eq('agent_id', agentId)
+      .eq('direction', 'outbound')
+      .eq('status', 'initiated')
+      .is('ended_at', null)
+      .lt('started_at', fiveMinAgo)
     return NextResponse.json({ ok: true })
   }
 
