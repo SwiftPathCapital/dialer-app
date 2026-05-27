@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { PhoneIncoming, PhoneOutgoing, Phone, Tag } from 'lucide-react'
+import { PhoneIncoming, PhoneOutgoing, Phone, FileText, BadgeDollarSign } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 
 type Range = 'today' | 'week' | 'month' | 'all'
@@ -11,7 +11,7 @@ interface DispoRow { disposition: string; count: number }
 
 interface AnalyticsData {
   range: Range
-  totals: { all: number; inbound: number; outbound: number; dispositioned: number }
+  totals: { all: number; inbound: number; outbound: number; apps: number; funded: number }
   byDisposition: {
     all: DispoRow[]
     inbound: DispoRow[]
@@ -113,10 +113,11 @@ export default function AnalyticsPage() {
   if (!agent) return null
 
   const summaryCards = data ? [
-    { label: 'Total Calls',     value: data.totals.all,          icon: <Phone className="w-4 h-4" />,           color: 'text-white' },
-    { label: 'Inbound',         value: data.totals.inbound,       icon: <PhoneIncoming className="w-4 h-4" />,   color: 'text-green-400' },
-    { label: 'Outbound',        value: data.totals.outbound,      icon: <PhoneOutgoing className="w-4 h-4" />,   color: 'text-blue-400' },
-    { label: 'With Disposition',value: data.totals.dispositioned, icon: <Tag className="w-4 h-4" />,             color: 'text-purple-400' },
+    { label: 'Total Calls', value: data.totals.all,     icon: <Phone className="w-4 h-4" />,              color: 'text-white' },
+    { label: 'Inbound',     value: data.totals.inbound, icon: <PhoneIncoming className="w-4 h-4" />,      color: 'text-green-400' },
+    { label: 'Outbound',    value: data.totals.outbound,icon: <PhoneOutgoing className="w-4 h-4" />,      color: 'text-blue-400' },
+    { label: 'Apps',        value: data.totals.apps,    icon: <FileText className="w-4 h-4" />,           color: 'text-teal-400' },
+    { label: 'Funded',      value: data.totals.funded,  icon: <BadgeDollarSign className="w-4 h-4" />,   color: 'text-emerald-400' },
   ] : []
 
   return (
@@ -142,9 +143,9 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         {loading
-          ? Array.from({ length: 4 }).map((_, i) => (
+          ? Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="bg-gray-800 rounded-xl border border-gray-700 p-4 animate-pulse h-20" />
             ))
           : summaryCards.map(({ label, value, icon, color }) => (

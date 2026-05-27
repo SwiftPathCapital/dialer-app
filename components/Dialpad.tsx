@@ -26,18 +26,6 @@ export default function Dialpad() {
   function handleCall() {
     if (!number.trim()) return
     makeCall(number.trim())
-    // Log the outbound call
-    if (agent) {
-      fetch('/api/calls', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from_number: agent.extension || agent.sip_username,
-          to_number: number.trim(),
-          agent_id: agent.id,
-        }),
-      }).catch(console.error)
-    }
     setNumber('')
   }
 

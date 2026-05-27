@@ -26,11 +26,14 @@ export async function GET(req: NextRequest) {
 
   if (!calls) return NextResponse.json({ error: 'Query failed' }, { status: 500 })
 
+  const APP_DISPOS = ['App Received', 'App Signed']
+  const FUNDED_DISPOS = ['Deal Funded']
+
   const tally = (subset: typeof calls) => {
     const counts: Record<string, number> = {}
     for (const c of subset) {
-      const key = c.disposition || 'No Disposition'
-      counts[key] = (counts[key] || 0) + 1
+      if (!c.disposition) continue
+      counts[c.disposition] = (counts[c.disposition] || 0) + 1
     }
     return Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
@@ -39,7 +42,8 @@ export async function GET(req: NextRequest) {
 
   const inbound = calls.filter(c => c.direction === 'inbound')
   const outbound = calls.filter(c => c.direction === 'outbound')
-  const dispositioned = calls.filter(c => c.disposition)
+  const apps = calls.filter(c => c.disposition && APP_DISPOS.includes(c.disposition))
+  const funded = calls.filter(c => c.disposition && FUNDED_DISPOS.includes(c.disposition))
 
   return NextResponse.json({
     range,
@@ -47,7 +51,8 @@ export async function GET(req: NextRequest) {
       all: calls.length,
       inbound: inbound.length,
       outbound: outbound.length,
-      dispositioned: dispositioned.length,
+      apps: apps.length,
+      funded: funded.length,
     },
     byDisposition: {
       all: tally(calls),
