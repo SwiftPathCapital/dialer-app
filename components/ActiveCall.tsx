@@ -1,8 +1,8 @@
 'use client'
 
-import { Mic, MicOff, Pause, Play, PhoneOff, ChevronDown, ChevronUp, Phone } from 'lucide-react'
+import { Mic, MicOff, Pause, Play, PhoneOff, ChevronDown, ChevronUp, Phone, UserPlus, GitMerge, X } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Lead } from '@/lib/types'
 
 function InfoRow({ label, value }: { label: string; value: string | null | undefined }) {
@@ -16,9 +16,16 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
 }
 
 export default function ActiveCall({ lead }: { lead?: Lead | null }) {
-  const { activeCall, heldCall, hangupCall, resumeHeld, toggleHold, toggleMute, answerCall, muted } = useSoftphone()
+  const {
+    activeCall, heldCall, hangupCall, resumeHeld, toggleHold, toggleMute,
+    answerCall, muted, addPartyCall, mergeConference, conferenceStatus,
+  } = useSoftphone()
+
   const [elapsed, setElapsed] = useState(0)
   const [expanded, setExpanded] = useState(false)
+  const [showAddParty, setShowAddParty] = useState(false)
+  const [addPartyNumber, setAddPartyNumber] = useState('')
+  const addPartyInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (activeCall?.state !== 'active') {
@@ -28,6 +35,18 @@ export default function ActiveCall({ lead }: { lead?: Lead | null }) {
     const interval = setInterval(() => setElapsed(s => s + 1), 1000)
     return () => clearInterval(interval)
   }, [activeCall?.state])
+
+  // Close add-party panel when call ends or goes on hold
+  useEffect(() => {
+    if (!activeCall || activeCall.state !== 'active') {
+      setShowAddParty(false)
+      setAddPartyNumber('')
+    }
+  }, [activeCall?.state])
+
+  useEffect(() => {
+    if (showAddParty) addPartyInputRef.current?.focus()
+  }, [showAddParty])
 
   if (!activeCall) return null
 
@@ -39,8 +58,30 @@ export default function ActiveCall({ lead }: { lead?: Lead | null }) {
     : (activeCall.callerName || null)
   const contact = lead?.company_name ? [lead.first_name, lead.last_name].filter(Boolean).join(' ') : null
 
+  function handleAddPartyDial() {
+    const num = addPartyNumber.trim()
+    if (!num) return
+    addPartyCall(num)
+    setShowAddParty(false)
+    setAddPartyNumber('')
+  }
+
   return (
     <div className="space-y-2 w-full max-w-xs">
+      {/* ── Conference badge ──────────────────────────────────────────────── */}
+      {conferenceStatus === 'active' && (
+        <div className="flex items-center justify-center gap-2 bg-purple-900/50 border border-purple-600/50 rounded-lg px-3 py-1.5">
+          <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+          <span className="text-purple-300 text-xs font-bold uppercase tracking-widest">Conference Active</span>
+        </div>
+      )}
+      {conferenceStatus === 'dialing' && (
+        <div className="flex items-center justify-center gap-2 bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5">
+          <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+          <span className="text-yellow-300 text-xs font-medium">Merging calls…</span>
+        </div>
+      )}
+
       {/* ── Active / held call card ──────────────────────────────────────── */}
       <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
         {/* Header */}
@@ -115,22 +156,62 @@ export default function ActiveCall({ lead }: { lead?: Lead | null }) {
 
         {/* Controls (active) */}
         {activeCall.state === 'active' && (
-          <div className="flex justify-center gap-4 mb-4">
-            <button
-              onClick={toggleMute}
-              title={muted ? 'Unmute' : 'Mute'}
-              className={`p-3 rounded-full transition-colors ${muted ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-            >
-              {muted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-            </button>
-            <button
-              onClick={toggleHold}
-              title="Hold"
-              className="p-3 rounded-full bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
-            >
-              <Pause className="w-5 h-5" />
-            </button>
-          </div>
+          <>
+            <div className="flex justify-center gap-4 mb-3">
+              <button
+                onClick={toggleMute}
+                title={muted ? 'Unmute' : 'Mute'}
+                className={`p-3 rounded-full transition-colors ${muted ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+              >
+                {muted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              </button>
+              <button
+                onClick={toggleHold}
+                title="Hold"
+                className="p-3 rounded-full bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+              >
+                <Pause className="w-5 h-5" />
+              </button>
+              {/* Add Party — only when not already managing a held call */}
+              {!heldCall && conferenceStatus === 'idle' && (
+                <button
+                  onClick={() => setShowAddParty(v => !v)}
+                  title="Add party"
+                  className={`p-3 rounded-full transition-colors ${showAddParty ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                >
+                  <UserPlus className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+
+            {/* Add Party number input */}
+            {showAddParty && (
+              <div className="mb-3 flex gap-2">
+                <input
+                  ref={addPartyInputRef}
+                  type="tel"
+                  value={addPartyNumber}
+                  onChange={e => setAddPartyNumber(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddPartyDial() }}
+                  placeholder="Number to dial…"
+                  className="flex-1 bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none placeholder-gray-500"
+                />
+                <button
+                  onClick={handleAddPartyDial}
+                  disabled={!addPartyNumber.trim()}
+                  className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm font-medium transition-colors"
+                >
+                  <Phone className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => { setShowAddParty(false); setAddPartyNumber('') }}
+                  className="px-2 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-400 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {/* Resume button (held) */}
@@ -153,7 +234,7 @@ export default function ActiveCall({ lead }: { lead?: Lead | null }) {
             className="w-full py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold flex items-center justify-center gap-2"
           >
             <PhoneOff className="w-5 h-5" />
-            Hang Up
+            {conferenceStatus === 'active' ? 'Leave Conference' : 'Hang Up'}
           </button>
         )}
         {activeCall.state === 'ringing' && (
@@ -166,7 +247,7 @@ export default function ActiveCall({ lead }: { lead?: Lead | null }) {
         )}
       </div>
 
-      {/* ── Held call strip (shown when a call is parked on hold) ─────────── */}
+      {/* ── Held call strip ───────────────────────────────────────────────── */}
       {heldCall && (
         <div className="bg-gray-900 rounded-xl px-4 py-3 border border-blue-800 flex items-center justify-between gap-3">
           <div className="min-w-0">
@@ -179,6 +260,18 @@ export default function ActiveCall({ lead }: { lead?: Lead | null }) {
             )}
           </div>
           <div className="flex gap-2 shrink-0">
+            {/* Merge — only available when active call is connected */}
+            {activeCall.state === 'active' && conferenceStatus !== 'active' && (
+              <button
+                onClick={mergeConference}
+                disabled={conferenceStatus === 'dialing'}
+                title="Merge into conference"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white text-xs font-medium transition-colors"
+              >
+                <GitMerge className="w-3.5 h-3.5" />
+                Merge
+              </button>
+            )}
             <button
               onClick={resumeHeld}
               title="Switch to held call (hangs up current)"

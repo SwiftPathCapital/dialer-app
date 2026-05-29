@@ -18,6 +18,8 @@ export interface ActiveCall {
   telnyxCall: any
 }
 
+type ConferenceStatus = 'idle' | 'dialing' | 'active'
+
 interface SoftphoneContextValue {
   agent: Agent | null
   setAgent: (agent: Agent | null) => void
@@ -28,6 +30,11 @@ interface SoftphoneContextValue {
   heldCall: ActiveCall | null     // the call we placed on hold to answer waitingCall
   /** Initiates an outbound call. Returns true if the dial proceeded, false if blocked (e.g. cooldown). */
   makeCall: (number: string) => Promise<boolean>
+  /** Holds the active call and dials a new number — used to add a third party. */
+  addPartyCall: (number: string) => void
+  /** Merges active + held calls into a Telnyx conference bridge. */
+  mergeConference: () => Promise<void>
+  conferenceStatus: ConferenceStatus
   answerCall: () => void
   hangupCall: () => void
   answerWaiting: () => void       // hold active, answer waiting
@@ -52,6 +59,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const [heldCall, setHeldCall] = useState<ActiveCall | null>(null)
   const [muted, setMuted] = useState(false)
   const [callErrorMsg, setCallErrorMsg] = useState<string | null>(null)
+  const [conferenceStatus, setConferenceStatus] = useState<ConferenceStatus>('idle')
   const callErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -105,6 +113,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
 
     if (prev !== null && activeCall === null) {
       playHangupTone()
+      setConferenceStatus('idle')
 
       // Restore agent status to whatever it was before any call started
       if (agent?.id) {
@@ -440,6 +449,10 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     const ctx = new AudioContext()
     audioCtxRef.current = ctx
 
+    // Chrome's autoplay policy suspends AudioContext created outside a user gesture.
+    // resume() unblocks it — agents will have interacted with the page before a ring arrives.
+    ctx.resume().catch(() => {})
+
     // Master gain node — zeroing this in stopRing() cuts audio instantly
     // rather than waiting for AudioContext.close() to drain its buffer.
     const master = ctx.createGain()
@@ -449,7 +462,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
 
     function tone(freqs: number[], duration: number) {
       const gain = ctx.createGain()
-      gain.gain.value = 0.12
+      gain.gain.value = 0.25
       gain.connect(master)          // ← route through master, not directly to destination
       freqs.forEach(freq => {
         const osc = ctx.createOscillator()
@@ -492,6 +505,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   function playHangupTone() {
     if (typeof window === 'undefined') return
     const ctx = new AudioContext()
+    ctx.resume().catch(() => {})
     const gain = ctx.createGain()
     gain.gain.setValueAtTime(0.15, ctx.currentTime)
     gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.35)
@@ -509,8 +523,9 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   function playCallWaitingBeep() {
     if (typeof window === 'undefined') return
     const ctx = new AudioContext()
+    ctx.resume().catch(() => {})
     const gain = ctx.createGain()
-    gain.gain.value = 0.1
+    gain.gain.value = 0.2
     gain.connect(ctx.destination)
     ;[0, 0.35].forEach(offset => {
       const osc = ctx.createOscillator()
@@ -596,6 +611,73 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   function clearCallError() {
     if (callErrorTimerRef.current) { clearTimeout(callErrorTimerRef.current); callErrorTimerRef.current = null }
     setCallErrorMsg(null)
+  }
+
+  function addPartyCall(number: string) {
+    if (!clientRef.current || !agent || !activeCallRef.current) return
+    if (activeCallRef.current.state !== 'active') return
+
+    // Hold the current call and immediately move it to heldCall state
+    try { activeCallRef.current.telnyxCall.hold() } catch {}
+    const callToHold: ActiveCall = { ...activeCallRef.current, state: 'held' }
+    heldCallRef.current = callToHold
+    setHeldCall(callToHold)
+
+    // Dial the new party via WebRTC
+    const call = clientRef.current.newCall({
+      destinationNumber: number,
+      callerNumber: agent.extension || agent.sip_username,
+    })
+    outboundCallIdRef.current = call.id
+
+    const newActive: ActiveCall = {
+      id: call.id,
+      direction: 'outbound',
+      remoteNumber: number,
+      state: 'ringing',
+      telnyxCall: call,
+    }
+    activeCallRef.current = newActive
+    setActiveCall(newActive)
+    startRing('outbound')
+
+    fetch('/api/calls', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from_number: agent.extension || agent.sip_username,
+        to_number: number,
+        agent_id: agent.id,
+        telnyx_call_control_id: call.id,
+      }),
+    }).catch(() => {})
+  }
+
+  async function mergeConference(): Promise<void> {
+    const active = activeCallRef.current
+    const held = heldCallRef.current
+    if (!active || !held) return
+
+    setConferenceStatus('dialing')
+    try {
+      const res = await fetch('/api/calls/conference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activeCallLegId: active.id,
+          heldCallLegId: held.id,
+        }),
+      })
+      if (res.ok) {
+        setConferenceStatus('active')
+        // Unhold the original call so its audio enters the conference bridge
+        try { held.telnyxCall.unhold() } catch {}
+      } else {
+        setConferenceStatus('idle')
+      }
+    } catch {
+      setConferenceStatus('idle')
+    }
   }
 
   function answerCall() {
@@ -687,6 +769,9 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       waitingCall,
       heldCall,
       makeCall,
+      addPartyCall,
+      mergeConference,
+      conferenceStatus,
       answerCall,
       hangupCall,
       answerWaiting,

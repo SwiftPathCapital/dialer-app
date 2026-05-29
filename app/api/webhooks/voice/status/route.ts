@@ -34,19 +34,51 @@ async function handle(req: NextRequest) {
 
   const db = createServerClient()
 
-  const { data: call } = await db
-    .from('dialer_calls')
-    .update({
-      status: dialStatus,
-      duration_seconds: duration ? parseInt(duration) : null,
-      ended_at: new Date().toISOString(),
-    })
-    .eq('telnyx_call_control_id', callSid)
-    .select('group_id, agent_id')
-    .single()
+  const BASE_URL = await getAppUrl()
+
+  // Update the call record and retrieve group/agent context for voicemail routing.
+  // If callSid is blank or doesn't match any record (e.g. Telnyx sent a different identifier),
+  // fall back to a lookup by time + direction so we can still route voicemail correctly
+  // instead of silently hanging up on the caller.
+  let call: { group_id: string | null; agent_id: string | null } | null = null
+
+  if (callSid) {
+    const { data } = await db
+      .from('dialer_calls')
+      .update({
+        status: dialStatus,
+        duration_seconds: duration ? parseInt(duration) : null,
+        ended_at: new Date().toISOString(),
+      })
+      .eq('telnyx_call_control_id', callSid)
+      .select('group_id, agent_id')
+      .maybeSingle()
+    call = data
+  }
+
+  // Fallback: if the callSid didn't match, find the most recent open inbound ringing call
+  if (!call && dialStatus !== 'completed') {
+    const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+    const { data: recent } = await db
+      .from('dialer_calls')
+      .select('id, group_id, agent_id')
+      .eq('direction', 'inbound')
+      .eq('status', 'ringing')
+      .is('ended_at', null)
+      .gte('started_at', twoMinAgo)
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (recent) {
+      await db
+        .from('dialer_calls')
+        .update({ status: dialStatus, ended_at: new Date().toISOString() })
+        .eq('id', recent.id)
+      call = recent
+    }
+  }
 
   if (dialStatus !== 'completed') {
-    const BASE_URL = await getAppUrl()
 
     // --- Group voicemail ---
     if (call?.group_id) {
@@ -72,7 +104,7 @@ async function handle(req: NextRequest) {
         }
         return texml(`${greetingXml}\n  <Record maxLength="120" recordingStatusCallback="${BASE_URL}/api/webhooks/voice/recording"/>`)
       }
-      return texml(`<Say>No agents are available. Goodbye.</Say>`)
+      return texml(`<Say>No agents are available. Please call back shortly.</Say>`)
     }
 
     // --- Direct agent line voicemail ---

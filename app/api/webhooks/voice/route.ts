@@ -62,9 +62,9 @@ async function handle(req: NextRequest) {
       ? await db.from('agents').select('sip_username, sip_connection_id, status').in('id', agentIds)
       : { data: [] }
 
-    // Only ring agents who are available — offline/busy agents won't have a registered SIP client
+    // Ring any agent who isn't explicitly offline — busy agents may still take waiting calls
     const availableAgents = (agents ?? []).filter(
-      (a: { status: string }) => a.status === 'available'
+      (a: { status: string }) => a.status !== 'offline'
     )
 
     const voicemailXml = group.voicemail_enabled
@@ -105,9 +105,9 @@ async function handle(req: NextRequest) {
       started_at: new Date().toISOString(),
     })
 
-    // If the agent is not available their SIP client won't be registered — skip the
+    // If the agent is offline their SIP client won't be registered — skip the
     // dial and go straight to voicemail so the caller doesn't wait 30 seconds in silence.
-    if (directAgent.status !== 'available') {
+    if (directAgent.status === 'offline') {
       await db.from('dialer_calls')
         .update({ status: 'no-answer', ended_at: new Date().toISOString() })
         .eq('telnyx_call_control_id', callSid)
