@@ -47,8 +47,11 @@ export async function POST(req: NextRequest) {
     heldCallRecord = byControl
   }
 
+  console.log('[conference] heldCallLegId:', heldCallLegId, '→ record:', heldCallRecord)
+  console.log('[conference] activeCallLegId:', activeCallLegId)
+
   if (!heldCallRecord) {
-    return NextResponse.json({ error: 'Held call record not found' }, { status: 404 })
+    return NextResponse.json({ error: 'Held call record not found in DB' }, { status: 404 })
   }
 
   const headers = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
@@ -58,6 +61,8 @@ export async function POST(req: NextRequest) {
   const anchorId = heldCallRecord.direction === 'inbound'
     ? heldCallRecord.telnyx_call_control_id
     : heldCallLegId
+
+  console.log('[conference] creating conference anchored on:', anchorId, '(direction:', heldCallRecord.direction, ')')
 
   const confRes = await fetch('https://api.telnyx.com/v2/conferences', {
     method: 'POST',
@@ -70,36 +75,48 @@ export async function POST(req: NextRequest) {
   })
   const confData = await confRes.json()
   if (!confRes.ok) {
-    console.error('[conference] create failed:', confData)
-    return NextResponse.json({ error: confData.errors?.[0]?.detail || 'Conference create failed' }, { status: 500 })
+    const detail = confData.errors?.[0]?.detail || confData.errors?.[0]?.title || JSON.stringify(confData)
+    console.error('[conference] create failed (anchor:', anchorId, '):', detail)
+    return NextResponse.json({ error: detail }, { status: 500 })
   }
 
   const conferenceId = confData.data?.id
   if (!conferenceId) return NextResponse.json({ error: 'No conference ID returned' }, { status: 500 })
 
-  const joinPromises: Promise<Response>[] = []
+  console.log('[conference] created:', conferenceId)
+
+  const joinLegs: string[] = []
 
   // For inbound held calls, explicitly join the agent's original SIP leg into the conference
   if (heldCallRecord.direction === 'inbound' && heldCallRecord.agent_call_leg_id) {
-    joinPromises.push(
-      fetch(`https://api.telnyx.com/v2/conferences/${conferenceId}/actions/join`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ call_control_id: heldCallRecord.agent_call_leg_id }),
-      })
-    )
+    joinLegs.push(heldCallRecord.agent_call_leg_id)
   }
 
   // Join the newly added party's call leg
-  joinPromises.push(
-    fetch(`https://api.telnyx.com/v2/conferences/${conferenceId}/actions/join`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ call_control_id: activeCallLegId }),
+  joinLegs.push(activeCallLegId)
+
+  const joinResults = await Promise.all(
+    joinLegs.map(async (legId) => {
+      const res = await fetch(`https://api.telnyx.com/v2/conferences/${conferenceId}/actions/join`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ call_control_id: legId }),
+      })
+      const body = await res.json()
+      if (!res.ok) {
+        console.error('[conference] join failed for leg', legId, ':', body)
+      } else {
+        console.log('[conference] join queued for leg', legId)
+      }
+      return { legId, ok: res.ok, body }
     })
   )
 
-  await Promise.all(joinPromises)
+  const failedJoin = joinResults.find(r => !r.ok)
+  if (failedJoin) {
+    const detail = failedJoin.body?.errors?.[0]?.detail || failedJoin.body?.errors?.[0]?.title || JSON.stringify(failedJoin.body)
+    return NextResponse.json({ error: `Join failed for leg ${failedJoin.legId}: ${detail}` }, { status: 500 })
+  }
 
   return NextResponse.json({ ok: true, conferenceId })
 }

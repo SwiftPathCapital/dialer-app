@@ -61,6 +61,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const [callErrorMsg, setCallErrorMsg] = useState<string | null>(null)
   const [conferenceStatus, setConferenceStatus] = useState<ConferenceStatus>('idle')
   const callErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const conferenceAudioCtxRef = useRef<AudioContext | null>(null)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const clientRef = useRef<any>(null)
@@ -114,6 +115,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     if (prev !== null && activeCall === null) {
       playHangupTone()
       setConferenceStatus('idle')
+      tearDownConferenceAudio()
 
       // Restore agent status to whatever it was before any call started
       if (agent?.id) {
@@ -392,7 +394,8 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
             return
           }
 
-          // Clean up audio
+          // Clean up audio + conference mixing context
+          tearDownConferenceAudio()
           const audio = document.getElementById('telnyx-remote-audio') as HTMLAudioElement
           if (audio) { audio.srcObject = null; audio.remove() }
           stopRing()
@@ -657,26 +660,58 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     const active = activeCallRef.current
     const held = heldCallRef.current
     if (!active || !held) return
+    if (active.state !== 'active') return
 
     setConferenceStatus('dialing')
-    try {
-      const res = await fetch('/api/calls/conference', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          activeCallLegId: active.id,
-          heldCallLegId: held.id,
-        }),
-      })
-      if (res.ok) {
-        setConferenceStatus('active')
-        // Unhold the original call so its audio enters the conference bridge
-        try { held.telnyxCall.unhold() } catch {}
-      } else {
-        setConferenceStatus('idle')
-      }
-    } catch {
+
+    // Unhold the original call so both legs are live simultaneously
+    try { held.telnyxCall.unhold() } catch {}
+
+    // Brief settle time for WebRTC unhold renegotiation
+    await new Promise(resolve => setTimeout(resolve, 250))
+
+    const streamA = active.telnyxCall?.remoteStream  // newly added party
+    const streamB = held.telnyxCall?.remoteStream    // original call (lead)
+
+    if (!streamA && !streamB) {
       setConferenceStatus('idle')
+      try { held.telnyxCall.hold() } catch {}
+      return
+    }
+
+    // Tear down any previous conference mixing context
+    if (conferenceAudioCtxRef.current) {
+      conferenceAudioCtxRef.current.close().catch(() => {})
+      conferenceAudioCtxRef.current = null
+    }
+
+    // Use Web Audio API to mix both remote streams into one output.
+    // The agent hears both parties simultaneously.
+    // The agent's mic is already being sent to both open PeerConnections by the SDK,
+    // so both parties hear the agent without any additional work.
+    const ctx = new AudioContext()
+    ctx.resume().catch(() => {})
+    conferenceAudioCtxRef.current = ctx
+
+    const mixDest = ctx.createMediaStreamDestination()
+    if (streamA) ctx.createMediaStreamSource(streamA).connect(mixDest)
+    if (streamB) ctx.createMediaStreamSource(streamB).connect(mixDest)
+
+    let audio = document.getElementById('telnyx-remote-audio') as HTMLAudioElement
+    if (!audio) {
+      audio = Object.assign(document.createElement('audio'), { id: 'telnyx-remote-audio', autoplay: true })
+      document.body.appendChild(audio)
+    }
+    audio.srcObject = mixDest.stream
+    audio.play().catch(console.error)
+
+    setConferenceStatus('active')
+  }
+
+  function tearDownConferenceAudio() {
+    if (conferenceAudioCtxRef.current) {
+      conferenceAudioCtxRef.current.close().catch(() => {})
+      conferenceAudioCtxRef.current = null
     }
   }
 
@@ -690,6 +725,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     if (!activeCall?.telnyxCall) return
     activeCall.telnyxCall.hangup()
     stopRing()
+    tearDownConferenceAudio()
     outboundCallIdRef.current = null
     setMuted(false)
     // Audio cleanup — belt-and-suspenders alongside the Telnyx hangup event handler

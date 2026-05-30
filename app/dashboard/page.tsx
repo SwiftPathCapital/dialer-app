@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Clock, PhoneIncoming, PhoneOutgoing, SkipForward, Phone } from 'lucide-react'
+import { Clock, PhoneIncoming, PhoneOutgoing, SkipForward, Phone, Mail } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import Dialpad from '@/components/Dialpad'
 import ActiveCall from '@/components/ActiveCall'
@@ -399,6 +399,25 @@ export default function DashboardPage() {
                     <p className="text-gray-300 text-sm whitespace-pre-wrap">{notes.trim()}</p>
                   </div>
                 )}
+
+                {/* Send Email shortcut */}
+                <button
+                  onClick={() => {
+                    const to = wrapup?.lead?.email ? encodeURIComponent(wrapup.lead.email) : ''
+                    const subject = wrapup?.lead?.company_name
+                      ? encodeURIComponent(`Follow Up – ${wrapup.lead.company_name}`)
+                      : ''
+                    const url = `https://mail.zoho.com/zm/#compose${to || subject ? `?to=${to}&subject=${subject}` : ''}`
+                    window.open(url, '_blank', 'noopener')
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm font-medium transition-colors border border-gray-600"
+                >
+                  <Mail className="w-4 h-4" />
+                  Send Email
+                  {wrapup?.lead?.email && (
+                    <span className="text-gray-400 text-xs truncate max-w-[140px]">{wrapup.lead.email}</span>
+                  )}
+                </button>
 
                 {/* Dispositions */}
                 <div>
