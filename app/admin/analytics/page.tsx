@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { PhoneIncoming, PhoneOutgoing, Phone, FileText, BadgeDollarSign, X, Clock } from 'lucide-react'
+import { PhoneIncoming, PhoneOutgoing, Phone, FileText, BadgeDollarSign, X, Clock, Layers } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
+import type { LeadSourceRow } from '@/app/api/admin/lead-pipeline/route'
 
 type Range = 'today' | 'week' | 'month' | 'all'
 type DetailKey = 'all' | 'inbound' | 'outbound' | 'apps' | 'funded'
@@ -180,6 +181,73 @@ function DetailModal({ detailKey, range, onClose }: { detailKey: DetailKey; rang
   )
 }
 
+const STATUS_COLORS: Record<string, string> = {
+  'Interested':           '#16a34a',
+  'Callback':             '#2563eb',
+  'No Answer':            '#4b5563',
+  'Left Voicemail':       '#7c3aed',
+  'New':                  '#374151',
+  'App Received':         '#0d9488',
+  'Docs Received':        '#4338ca',
+  'Pending App & Docs':   '#d97706',
+  'Deal Funded':          '#059669',
+  'Not Interested':       '#dc2626',
+  'DNC':                  '#ea580c',
+  'Wrong Number':         '#ca8a04',
+}
+
+function LeadPipelineSection({ rows }: { rows: LeadSourceRow[] }) {
+  if (rows.length === 0) return <p className="text-gray-600 text-sm">No lead data.</p>
+
+  return (
+    <div className="space-y-3">
+      {rows.map(row => {
+        const statusEntries = Object.entries(row.by_status).sort((a, b) => b[1] - a[1])
+        return (
+          <div key={row.lead_type} className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-white font-semibold text-sm">{row.lead_type}</p>
+              <div className="flex items-center gap-4 text-xs">
+                <span className="text-blue-400 font-medium">{row.dialable.toLocaleString()} dialable</span>
+                <span className="text-teal-400">{row.pipeline} in pipeline</span>
+                <span className="text-red-400">{row.dead} dead</span>
+                <span className="text-gray-500">{row.total.toLocaleString()} total</span>
+              </div>
+            </div>
+
+            {/* Stacked bar */}
+            <div className="flex h-2.5 rounded-full overflow-hidden mb-3 bg-gray-700">
+              {statusEntries.map(([status, count]) => (
+                <div
+                  key={status}
+                  title={`${status}: ${count}`}
+                  style={{
+                    width: `${(count / row.total) * 100}%`,
+                    backgroundColor: STATUS_COLORS[status] ?? '#6b7280',
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Status breakdown */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {statusEntries.map(([status, count]) => (
+                <span key={status} className="text-xs text-gray-400 flex items-center gap-1">
+                  <span
+                    className="w-2 h-2 rounded-full inline-block shrink-0"
+                    style={{ backgroundColor: STATUS_COLORS[status] ?? '#6b7280' }}
+                  />
+                  {status}: <span className="text-gray-200 font-medium">{count}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function AnalyticsPage() {
   const { agent, agentLoading } = useSoftphone()
   const router = useRouter()
@@ -187,6 +255,8 @@ export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [openDetail, setOpenDetail] = useState<DetailKey | null>(null)
+  const [pipeline, setPipeline] = useState<LeadSourceRow[]>([])
+  const [pipelineLoading, setPipelineLoading] = useState(true)
 
   const load = useCallback(async (r: Range) => {
     setLoading(true)
@@ -203,6 +273,10 @@ export default function AnalyticsPage() {
     if (agentLoading) return
     if (!agent) { router.push('/login'); return }
     load(range)
+    fetch('/api/admin/lead-pipeline')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setPipeline(d) })
+      .finally(() => setPipelineLoading(false))
   }, [agent, agentLoading, router, range, load])
 
   if (!agent) return null
@@ -286,6 +360,24 @@ export default function AnalyticsPage() {
           />
         </div>
       ) : null}
+
+      {/* Lead Pipeline by Source */}
+      <div className="mt-8">
+        <div className="flex items-center gap-2 mb-4">
+          <Layers className="w-4 h-4 text-gray-400" />
+          <h2 className="text-white font-semibold">Lead Pipeline by Source</h2>
+          <span className="text-xs text-gray-500 ml-1">all time · updates live</span>
+        </div>
+        {pipelineLoading ? (
+          <div className="space-y-3">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="bg-gray-800 border border-gray-700 rounded-xl h-20 animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <LeadPipelineSection rows={pipeline} />
+        )}
+      </div>
 
       {/* Detail modal */}
       {openDetail && (

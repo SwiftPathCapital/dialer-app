@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
       query = query.or(`last_called_at.is.null,last_called_at.lt.${eightHoursAgo}`)
 
       // Permanently exclude leads that should never be called again
-      query = query.not('status', 'in', '("DNC","Not Interested","App Received","Docs Received","Pending App & Docs","Deal Funded")')
+      query = query.not('status', 'in', '("DNC","Not Interested","Wrong Number","App Received","Docs Received","Pending App & Docs","Deal Funded")')
     }
     if (search) {
       query = query.or(`company_name.ilike.%${search}%,name.ilike.%${search}%,phone.ilike.%${search}%`)
