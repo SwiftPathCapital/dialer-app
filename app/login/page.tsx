@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Phone } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useSoftphone } from '@/lib/SoftphoneContext'
+import { Agent } from '@/lib/types'
 
 export default function LoginPage() {
   const [email, setEmail]       = useState('')
@@ -32,7 +33,7 @@ export default function LoginPage() {
       .from('agents')
       .select('id, name, email, sip_username, sip_password, extension, status, role, voicemail_greeting_url, updated_at')
       .eq('id', authData.user.id)
-      .single()
+      .single() as { data: Agent | null; error: unknown }
 
     if (agentError || !agent) {
       setError('Account exists but no agent profile found. Contact your admin.')
