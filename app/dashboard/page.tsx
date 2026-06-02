@@ -277,9 +277,30 @@ export default function DashboardPage() {
           <VoicemailGreeting />
         </div>
 
-        {/* Right: wrap-up OR new-lead form OR preview dialer */}
-        {(wrapup || lead || activeLead || (activeCall && !callLeadLoading)) && (
+        {/* Right: new-lead form (inline) + wrap-up / preview dialer */}
+        {(wrapup || lead || activeLead || newLeadModal || (activeCall && !callLeadLoading)) && (
           <div className="flex-1 min-w-72 space-y-4">
+
+            {/* Inline new-contact form — shown when caller has no lead record yet */}
+            {newLeadModal && !inboundLead && !dialedLead && (
+              <NewLeadForm
+                phone={newLeadModal.phone}
+                direction={newLeadModal.direction}
+                agentId={agent.id}
+                inline
+                onCreated={newLead => {
+                  if (newLeadModal.direction === 'inbound') setInboundLead(newLead)
+                  else setDialedLead(newLead)
+                  setWrapup(prev => prev ? { ...prev, lead: newLead } : prev)
+                  setNewLeadModal(null)
+                  newLeadShownForRef.current = null
+                }}
+                onCancel={() => {
+                  setNewLeadModal(null)
+                  newLeadShownForRef.current = null
+                }}
+              />
+            )}
             {wrapup && callbackPicker ? (
               /* ── Callback scheduler ── */
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 space-y-4">
@@ -459,8 +480,8 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-            ) : (
-              /* ── Lead preview card ── */
+            ) : !newLeadModal ? (
+              /* ── Lead preview card — hidden while unknown-caller form is open ── */
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
                 <div className="flex items-start justify-between mb-1">
                   <p className="text-xs text-gray-500 uppercase tracking-widest">
@@ -507,7 +528,7 @@ export default function DashboardPage() {
                   </div>
                 )}
               </div>
-            )}
+            ) : null}
 
             {/* Previous dials */}
             {callHistory.length > 0 && (
@@ -547,27 +568,6 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
-      {/* ── New-lead modal (unknown caller) ────────────────────────────────────
-           Rendered outside the panel flow so it overlays everything.
-           Survives call disconnect — only Save or Cancel dismisses it. */}
-      {newLeadModal && (
-        <NewLeadForm
-          phone={newLeadModal.phone}
-          direction={newLeadModal.direction}
-          agentId={agent.id}
-          onCreated={newLead => {
-            // Attribute the new lead to the right call leg
-            if (newLeadModal.direction === 'inbound') setInboundLead(newLead)
-            else setDialedLead(newLead)
-            setNewLeadModal(null)
-            newLeadShownForRef.current = null
-          }}
-          onCancel={() => {
-            setNewLeadModal(null)
-            newLeadShownForRef.current = null
-          }}
-        />
-      )}
     </div>
   )
 }

@@ -10,9 +10,10 @@ interface Props {
   agentId: string
   onCreated: (lead: Lead) => void
   onCancel: () => void
+  inline?: boolean
 }
 
-export default function NewLeadForm({ phone, direction, agentId, onCreated, onCancel }: Props) {
+export default function NewLeadForm({ phone, direction, agentId, onCreated, onCancel, inline }: Props) {
   const [form, setForm] = useState({
     first_name:   '',
     last_name:    '',
@@ -44,16 +45,8 @@ export default function NewLeadForm({ phone, direction, agentId, onCreated, onCa
     onCreated(data)
   }
 
-  return (
-    /* ── Modal overlay ────────────────────────────────────────────────────────
-       Fixed full-screen backdrop. Does NOT close on backdrop click — agent
-       must explicitly Save or Cancel. */
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
-      <div
-        className="w-full max-w-md bg-gray-800 rounded-2xl border border-blue-600 shadow-2xl"
-        /* Stop clicks inside the card from bubbling to the backdrop */
-        onClick={e => e.stopPropagation()}
-      >
+  const card = (
+      <div className="w-full bg-gray-800 rounded-2xl border border-blue-600 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-700">
           <div className="flex items-center gap-2">
@@ -118,6 +111,15 @@ export default function NewLeadForm({ phone, direction, agentId, onCreated, onCa
             </button>
           </div>
         </form>
+      </div>
+  )
+
+  if (inline) return card
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+      <div className="w-full max-w-md" onClick={e => e.stopPropagation()}>
+        {card}
       </div>
     </div>
   )
