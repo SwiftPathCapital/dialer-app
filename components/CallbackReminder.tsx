@@ -110,7 +110,7 @@ export default function CallbackReminder() {
                   onClick={() => {
                     if (activeCall) return
                     const e164 = cb.lead_phone.replace(/\D/g, '').replace(/^1?(\d{10})$/, '+1$1')
-                    makeCall(e164)
+                    makeCall(e164, { bypassCooldown: true })
                   }}
                   disabled={!!activeCall}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white text-xs rounded-lg transition-colors"

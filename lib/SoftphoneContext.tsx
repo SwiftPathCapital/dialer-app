@@ -31,7 +31,7 @@ interface SoftphoneContextValue {
   waitingCall: ActiveCall | null   // inbound ringing while already on a call
   heldCall: ActiveCall | null     // the call we placed on hold to answer waitingCall
   /** Initiates an outbound call. Returns true if the dial proceeded, false if blocked (e.g. cooldown). */
-  makeCall: (number: string) => Promise<boolean>
+  makeCall: (number: string, opts?: { bypassCooldown?: boolean }) => Promise<boolean>
   /** Holds the active call and dials a new number — used to add a third party. */
   addPartyCall: (number: string) => void
   /** Merges active + held calls into a Telnyx conference bridge. */
@@ -595,14 +595,15 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   }
 
   // ── Public call actions ───────────────────────────────────────────────────
-  async function makeCall(number: string): Promise<boolean> {
+  async function makeCall(number: string, opts?: { bypassCooldown?: boolean }): Promise<boolean> {
     if (!clientRef.current || !agent) return false
     if (dialingRef.current) return false
 
     // ── 8-hour cooldown pre-flight check ─────────────────────────────────────
     // Must happen BEFORE client.newCall() so the WebRTC dial never fires when blocked.
+    // Bypass when the agent explicitly chose to call (e.g. from a scheduled callback).
     const digits = number.replace(/\D/g, '')
-    if (digits.length >= 7) {
+    if (digits.length >= 7 && !opts?.bypassCooldown) {
       try {
         const res = await fetch(`/api/calls/cooldown?phone=${digits}`)
         if (res.ok) {
