@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { Agent, AgentStatus } from './types'
+import { supabase } from './supabase'
 
 type CallState = 'idle' | 'ringing' | 'active' | 'held'
 type RingType = 'inbound' | 'outbound' | 'group-inbound'
@@ -12,6 +13,7 @@ export interface ActiveCall {
   remoteNumber: string
   groupName?: string
   groupId?: string        // set when group call — used for the DB answer attribution
+  groupColor?: string
   callerName?: string
   state: CallState
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -62,6 +64,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const [conferenceStatus, setConferenceStatus] = useState<ConferenceStatus>('idle')
   const callErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const conferenceAudioCtxRef = useRef<AudioContext | null>(null)
+  const inboundNotifRef = useRef<Notification | null>(null)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const clientRef = useRef<any>(null)
@@ -69,7 +72,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const ringGainRef = useRef<GainNode | null>(null)   // master gain — zeroed instantly on stopRing
   const ringTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const groupsRef = useRef<Array<{ id: string; name: string; phone_number: string }>>([])
+  const groupsRef = useRef<Array<{ id: string; name: string; phone_number: string; color: string | null }>>([])
   const dialingRef = useRef(false)
   const prevCallRef = useRef<ActiveCall | null>(null)
   const callActiveAtRef = useRef<number | null>(null)
@@ -87,6 +90,21 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { activeCallRef.current = activeCall }, [activeCall])
   useEffect(() => { waitingCallRef.current = waitingCall }, [waitingCall])
   useEffect(() => { heldCallRef.current = heldCall }, [heldCall])
+
+  // ── Ringing timeout: safety net for missed SIP CANCEL ─────────────────────
+  // If an inbound call stays in 'ringing' for longer than the <Dial timeout="30"> + buffer,
+  // it means Telnyx cancelled it (another agent answered) but the SDK didn't fire the event.
+  useEffect(() => {
+    if (activeCall?.state !== 'ringing' || activeCall.direction !== 'inbound') return
+    const timer = setTimeout(() => {
+      if (activeCallRef.current?.state === 'ringing') {
+        stopRing()
+        setActiveCall(null)
+      }
+    }, 35000)
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCall?.id, activeCall?.state])
 
   // ── Load groups + clean up stale outbound rows on agent mount ─────────────
   useEffect(() => {
@@ -147,16 +165,25 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window === 'undefined') return
     const stored = localStorage.getItem('dialer_agent')
+    const expiresAt = localStorage.getItem('dialer_agent_expires')
     if (stored) {
       try {
         const a = JSON.parse(stored)
-        setAgent(a)
-        if (a?.id && a?.status) {
-          fetch('/api/agents', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: a.id, status: a.status }),
-          }).catch(() => {})
+        // Enforce 8-hour session expiry
+        if (expiresAt && Date.now() > parseInt(expiresAt)) {
+          localStorage.removeItem('dialer_agent')
+          localStorage.removeItem('dialer_agent_expires')
+          supabase.auth.signOut().catch(() => {})
+          fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {})
+        } else {
+          setAgent(a)
+          if (a?.id && a?.status) {
+            fetch('/api/agents', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: a.id, status: a.status }),
+            }).catch(() => {})
+          }
         }
       } catch {}
     }
@@ -228,6 +255,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
               remoteNumber,
               groupName,
               groupId: groupObj?.id,
+              groupColor: groupObj?.color ?? undefined,
               state: 'ringing',
               telnyxCall: call,
             })
@@ -254,6 +282,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
             remoteNumber,
             groupName,
             groupId: groupObj?.id,
+            groupColor: groupObj?.color ?? undefined,
             state: 'ringing',
             telnyxCall: call,
           })
@@ -273,20 +302,27 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
           if (!groupName) {
             const digits = remoteNumber.replace(/\D/g, '')
             if (digits) {
-              fetch(`/api/calls?from_number=${digits}&direction=inbound&status=ringing&limit=1`)
-                .then(r => r.json())
-                .then((calls: { group_id?: string }[]) => {
+              ;(async () => {
+                try {
+                  const calls: { group_id?: string }[] = await fetch(
+                    `/api/calls?from_number=${digits}&direction=inbound&status=ringing&limit=1`
+                  ).then(r => r.json())
                   const dbCall = calls?.[0]
-                  if (dbCall?.group_id) {
-                    const group = groupsRef.current.find(g => g.id === dbCall.group_id)
-                    if (group) {
-                      setActiveCall(prev => prev ? { ...prev, groupName: group.name, groupId: group.id } : null)
-                      stopRing()
-                      startRing('group-inbound')
-                    }
+                  if (!dbCall?.group_id) return
+                  let group = groupsRef.current.find(g => g.id === dbCall.group_id)
+                  if (!group) {
+                    // Group was created after mount — refresh the cached list
+                    const fresh = await fetch('/api/groups').then(r => r.json())
+                    if (Array.isArray(fresh)) groupsRef.current = fresh
+                    group = groupsRef.current.find(g => g.id === dbCall.group_id)
                   }
-                })
-                .catch(() => {})
+                  if (group) {
+                    setActiveCall(prev => prev ? { ...prev, groupName: group!.name, groupId: group!.id, groupColor: group!.color ?? undefined } : null)
+                    stopRing()
+                    startRing('group-inbound')
+                  }
+                } catch {}
+              })()
             }
           }
 
@@ -388,10 +424,16 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
             setHeldCall(null)
             return
           }
-          // Ignore events for calls we're not tracking
+          // Ignore events for calls we're not tracking.
+          // Exception: if the active call is still ringing (not yet answered), any untracked
+          // hangup is almost certainly a SIP CANCEL from another agent picking up the parallel-ring.
+          // The Telnyx Verto layer can assign a slightly different call ID to the CANCEL vs the
+          // original INVITE, so we must not require an exact match in the ringing state.
           if (activeCallRef.current && call.id !== activeCallRef.current.id) {
-            console.log('[Telnyx] ignoring hangup for non-active leg', call.id)
-            return
+            if (activeCallRef.current.state !== 'ringing') {
+              console.log('[Telnyx] ignoring hangup for non-active leg', call.id)
+              return
+            }
           }
 
           // Clean up audio + conference mixing context
@@ -790,8 +832,12 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     setAgent(a)
     if (a) {
       localStorage.setItem('dialer_agent', JSON.stringify(a))
+      localStorage.setItem('dialer_agent_expires', String(Date.now() + 8 * 60 * 60 * 1000))
     } else {
       localStorage.removeItem('dialer_agent')
+      localStorage.removeItem('dialer_agent_expires')
+      supabase.auth.signOut().catch(() => {})
+      fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {})
     }
   }
 

@@ -41,6 +41,12 @@ export default function LoginPage() {
     }
 
     setAgent(agent)
+    // Set HttpOnly session cookies so middleware can protect routes
+    await fetch('/api/auth/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ access_token: authData.session?.access_token, role: agent.role }),
+    }).catch(() => {})
     router.push('/dashboard')
     setLoading(false)
   }

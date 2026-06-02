@@ -4,16 +4,12 @@ import { Phone, PhoneOff, PhoneMissed } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import { ActiveCall } from '@/lib/SoftphoneContext'
 
-const GROUP_COLORS: Record<string, string> = {
-  'SD Live transfers': 'bg-blue-500',
-}
+const FALLBACK_COLORS = ['#a855f7', '#22c55e', '#f97316', '#ec4899', '#14b8a6']
 
-function groupColor(name: string) {
-  if (GROUP_COLORS[name]) return GROUP_COLORS[name]
-  const colors = ['bg-purple-500', 'bg-green-500', 'bg-orange-500', 'bg-pink-500', 'bg-teal-500']
+function hashColor(name: string): string {
   let hash = 0
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) & 0xff
-  return colors[hash % colors.length]
+  return FALLBACK_COLORS[hash % FALLBACK_COLORS.length]
 }
 
 function CallerInfo({ call }: { call: ActiveCall }) {
@@ -21,7 +17,10 @@ function CallerInfo({ call }: { call: ActiveCall }) {
     <>
       {call.groupName && (
         <div className="flex items-center gap-2 mb-1">
-          <span className={`inline-flex items-center px-3 py-0.5 rounded-full text-xs font-bold text-white ${groupColor(call.groupName)}`}>
+          <span
+            className="inline-flex items-center px-3 py-0.5 rounded-full text-xs font-bold text-white"
+            style={{ backgroundColor: call.groupColor ?? hashColor(call.groupName) }}
+          >
             {call.groupName}
           </span>
         </div>

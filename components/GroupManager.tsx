@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Users } from 'lucide-react'
+import { Plus, Trash2, Users, Pencil, Check, X } from 'lucide-react'
 import { Agent, InboundGroup } from '@/lib/types'
 
 interface GroupWithMembers extends InboundGroup {
@@ -16,6 +16,16 @@ export default function GroupManager() {
   const [newPhone, setNewPhone] = useState('')
   const [creating, setCreating] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [editingGroup, setEditingGroup] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editPhone, setEditPhone] = useState('')
+  const [editColor, setEditColor] = useState<string | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
+
+  const COLOR_PRESETS = [
+    '#3b82f6', '#8b5cf6', '#10b981', '#f97316', '#ec4899',
+    '#14b8a6', '#ef4444', '#f59e0b', '#6366f1', '#06b6d4',
+  ]
 
   async function load() {
     const [g, a] = await Promise.all([
@@ -77,7 +87,32 @@ export default function GroupManager() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: group.id, voicemail_enabled: !group.voicemail_enabled }),
     })
-    await load()
+    const loaded = await load()
+    const updated = loaded.find(g => g.id === group.id)
+    if (updated) setSelected(updated)
+  }
+
+  function startEditGroup() {
+    if (!selected) return
+    setEditName(selected.name)
+    setEditPhone(selected.phone_number || '')
+    setEditColor(selected.color ?? null)
+    setEditingGroup(true)
+  }
+
+  async function saveGroupEdit() {
+    if (!selected) return
+    setEditSaving(true)
+    await fetch('/api/groups', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: selected.id, name: editName.trim(), phone_number: editPhone.trim() || null, color: editColor }),
+    })
+    setEditSaving(false)
+    setEditingGroup(false)
+    const loaded = await load()
+    const updated = loaded.find(g => g.id === selected.id)
+    if (updated) setSelected(updated)
   }
 
   if (loading) return <p className="text-gray-400 p-6">Loading...</p>
@@ -91,14 +126,17 @@ export default function GroupManager() {
         {groups.map(g => (
           <button
             key={g.id}
-            onClick={() => setSelected(g)}
+            onClick={() => { setSelected(g); setEditingGroup(false) }}
             className={`w-full text-left px-3 py-3 rounded-lg border transition-colors ${
               selected?.id === g.id
                 ? 'bg-blue-900/40 border-blue-600 text-white'
                 : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-600'
             }`}
           >
-            <p className="font-medium text-sm">{g.name}</p>
+            <div className="flex items-center gap-2">
+              {g.color && <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: g.color }} />}
+              <p className="font-medium text-sm">{g.name}</p>
+            </div>
             <p className="text-xs text-gray-500 mt-0.5">
               {g.phone_number || 'No number assigned'} · {g.inbound_group_members?.length || 0} agents
             </p>
@@ -134,10 +172,76 @@ export default function GroupManager() {
       {selected ? (
         <div className="flex-1 bg-gray-800 rounded-xl p-6 border border-gray-700">
           <div className="flex items-start justify-between mb-5">
-            <div>
-              <h2 className="text-white text-lg font-semibold">{selected.name}</h2>
-              <p className="text-gray-400 text-sm">{selected.phone_number || 'No phone number'}</p>
-            </div>
+            {editingGroup ? (
+              <div className="flex-1 space-y-2 mr-4">
+                <input
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  placeholder="Group name"
+                  className="w-full bg-gray-900 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  value={editPhone}
+                  onChange={e => setEditPhone(e.target.value)}
+                  placeholder="+1 DID number"
+                  className="w-full bg-gray-900 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600"
+                />
+                <div>
+                  <p className="text-gray-500 text-xs mb-1.5">Bubble color</p>
+                  <div className="flex flex-wrap gap-2">
+                    {COLOR_PRESETS.map(hex => (
+                      <button
+                        key={hex}
+                        type="button"
+                        onClick={() => setEditColor(hex)}
+                        className="w-6 h-6 rounded-full border-2 transition-all"
+                        style={{
+                          backgroundColor: hex,
+                          borderColor: editColor === hex ? '#fff' : 'transparent',
+                          boxShadow: editColor === hex ? '0 0 0 1px #6b7280' : 'none',
+                        }}
+                      />
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setEditColor(null)}
+                      title="Clear color (use auto)"
+                      className={`w-6 h-6 rounded-full border-2 bg-gray-700 text-gray-400 text-xs flex items-center justify-center transition-all ${editColor === null ? 'border-white ring-1 ring-gray-500' : 'border-transparent'}`}
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={saveGroupEdit}
+                    disabled={!editName.trim() || editSaving}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-medium transition-colors"
+                  >
+                    <Check className="w-3 h-3" /> Save
+                  </button>
+                  <button
+                    onClick={() => setEditingGroup(false)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium transition-colors"
+                  >
+                    <X className="w-3 h-3" /> Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2">
+                <div>
+                  <h2 className="text-white text-lg font-semibold">{selected.name}</h2>
+                  <p className="text-gray-400 text-sm">{selected.phone_number || 'No phone number'}</p>
+                </div>
+                <button
+                  onClick={startEditGroup}
+                  className="mt-1 text-gray-500 hover:text-white transition-colors"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              </div>
+            )}
             <div className="flex items-center gap-3">
               <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
                 <input

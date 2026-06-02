@@ -18,6 +18,7 @@ export interface InboundGroup {
   name: string
   phone_number: string | null
   voicemail_enabled: boolean
+  color: string | null
   created_at: string
 }
 
