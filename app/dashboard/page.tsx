@@ -134,7 +134,7 @@ export default function DashboardPage() {
     if (prev && !activeCall) {
       // Inbound calls that ended while still ringing mean another agent answered — skip dispo
       if (prev.direction === 'inbound' && prev.state === 'ringing') { setDialedLead(null); return }
-      const wrapLead = prev.direction === 'outbound' ? (dialedLead || lead) : (inboundLead || lead)
+      const wrapLead = prev.direction === 'outbound' ? dialedLead : inboundLead
       const phone = prev.remoteNumber || ''
       setDialedLead(null)
       // Always show wrap-up — even if no lead matched, use phone number as identifier
