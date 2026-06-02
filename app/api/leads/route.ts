@@ -63,6 +63,9 @@ export async function GET(req: NextRequest) {
       // Exclude leads called in the last 8 hours from the dialer queue
       const eightHoursAgo = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString()
       query = query.or(`last_called_at.is.null,last_called_at.lt.${eightHoursAgo}`)
+
+      // Permanently exclude leads that should never be called again
+      query = query.not('status', 'in', '("DNC","Not Interested","App Received","Docs Received","Pending App & Docs","Deal Funded")')
     }
     if (search) {
       query = query.or(`company_name.ilike.%${search}%,name.ilike.%${search}%,phone.ilike.%${search}%`)
