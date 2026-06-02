@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Clock, PhoneIncoming, PhoneOutgoing, SkipForward, Phone, Mail } from 'lucide-react'
+import { Clock, PhoneIncoming, PhoneOutgoing, SkipForward, Phone, Mail, RotateCcw } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import Dialpad from '@/components/Dialpad'
 import ActiveCall from '@/components/ActiveCall'
@@ -221,6 +221,18 @@ export default function DashboardPage() {
     setIndex(i => Math.min(i + 1, leads.length - 1))
   }
 
+  function redial() {
+    if (!wrapup) return
+    const raw = wrapup.phone.replace(/\D/g, '')
+    const e164 = raw.replace(/^1?(\d{10})$/, '+1$1')
+    if (!e164.startsWith('+')) return
+    if (wrapup.lead) setDialedLead(wrapup.lead)
+    setWrapup(null)
+    setWrapupStep('notes')
+    setNotes('')
+    makeCall(e164)
+  }
+
   function dial() {
     if (!lead?.phone || wrapup) return
     const e164 = lead.phone.replace(/\D/g, '').replace(/^1?(\d{10})$/, '+1$1')
@@ -417,6 +429,16 @@ export default function DashboardPage() {
                   {wrapup?.lead?.email && (
                     <span className="text-gray-400 text-xs truncate max-w-[140px]">{wrapup.lead.email}</span>
                   )}
+                </button>
+
+                {/* Redial */}
+                <button
+                  onClick={redial}
+                  disabled={saving || !!activeCall}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-indigo-700 hover:bg-indigo-600 disabled:opacity-40 text-white text-sm font-semibold transition-colors"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Redial {wrapup?.phone}
                 </button>
 
                 {/* Dispositions */}
