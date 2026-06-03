@@ -19,12 +19,18 @@ export async function GET(req: NextRequest) {
     groupIds = memberships?.map((m: { group_id: string }) => m.group_id) ?? []
   }
 
+  const dateFrom = searchParams.get('date_from')
+  const dateTo = searchParams.get('date_to')
+
   let query = db
     .from('dialer_calls')
     .select('*')
     .not('telnyx_call_control_id', 'is', null)
     .order('started_at', { ascending: false })
     .limit(limit)
+
+  if (dateFrom) query = query.gte('started_at', dateFrom)
+  if (dateTo) query = query.lte('started_at', dateTo)
 
   const fromNumber = searchParams.get('from_number')
   const directionFilter = searchParams.get('direction')
