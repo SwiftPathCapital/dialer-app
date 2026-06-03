@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, Save, CheckCircle, XCircle, RefreshCw, Upload, Mic, Filter } from 'lucide-react'
+import { Eye, EyeOff, Save, CheckCircle, XCircle, RefreshCw, Upload, Mic, Filter, KeyRound } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 
-type Agent = { id: string; name: string; voicemail_greeting_url: string | null }
+type Agent = { id: string; name: string; email: string; voicemail_greeting_url: string | null }
 
 type ConfigStatus = Record<string, { isSet: boolean; updated_at: string | null }>
 
@@ -72,11 +72,17 @@ export default function ConfigPage() {
   const [sourcesSaving, setSourcesSaving] = useState(false)
   const [sourcesSaved, setSourcesSaved] = useState(false)
 
+  const [pwValues, setPwValues] = useState<Record<string, string>>({})
+  const [pwShow, setPwShow] = useState<Record<string, boolean>>({})
+  const [pwSaving, setPwSaving] = useState<Record<string, boolean>>({})
+  const [pwSaved, setPwSaved] = useState<Record<string, boolean>>({})
+  const [pwError, setPwError] = useState<Record<string, string>>({})
+
   useEffect(() => {
     if (agentLoading) return
     if (!agent) { router.push('/login'); return }
     loadStatus()
-    fetch('/api/agents').then(r => r.json()).then(data => { if (Array.isArray(data)) setAgents(data) }).catch(() => {})
+    fetch('/api/agents').then(r => r.json()).then(data => { if (Array.isArray(data)) setAgents(data as Agent[]) }).catch(() => {})
     fetch('/api/admin/lead-sources').then(r => r.json()).then(d => {
       if (Array.isArray(d.types)) setLeadSourceTypes(d.types)
       if (Array.isArray(d.active)) setActiveSources(d.active)
@@ -113,6 +119,30 @@ export default function ConfigPage() {
     setSourcesSaving(false)
     setSourcesSaved(true)
     setTimeout(() => setSourcesSaved(false), 3000)
+  }
+
+  async function savePassword(agentId: string) {
+    const password = pwValues[agentId] ?? ''
+    if (password.length < 8) {
+      setPwError(prev => ({ ...prev, [agentId]: 'Must be at least 8 characters' }))
+      return
+    }
+    setPwError(prev => ({ ...prev, [agentId]: '' }))
+    setPwSaving(prev => ({ ...prev, [agentId]: true }))
+    const res = await fetch('/api/admin/agents/password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId, password }),
+    })
+    const data = await res.json()
+    setPwSaving(prev => ({ ...prev, [agentId]: false }))
+    if (!res.ok) {
+      setPwError(prev => ({ ...prev, [agentId]: data.error || 'Failed to update password' }))
+      return
+    }
+    setPwValues(prev => ({ ...prev, [agentId]: '' }))
+    setPwSaved(prev => ({ ...prev, [agentId]: true }))
+    setTimeout(() => setPwSaved(prev => ({ ...prev, [agentId]: false })), 3000)
   }
 
   async function uploadGreeting(agentId: string, file: File) {
@@ -361,6 +391,64 @@ export default function ConfigPage() {
                       {a.voicemail_greeting_url ? 'Replace' : 'Upload'}
                     </button>
                   </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Agent Passwords */}
+          <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-700">
+              <h2 className="text-white font-semibold flex items-center gap-2"><KeyRound className="w-4 h-4" /> Agent Passwords</h2>
+              <p className="text-gray-400 text-sm mt-0.5">Reset the login password for any agent. Minimum 8 characters.</p>
+            </div>
+            <div className="divide-y divide-gray-700">
+              {agents.map(a => (
+                <div key={a.id} className="px-6 py-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-white text-sm font-medium">{a.name}</p>
+                      <p className="text-gray-500 text-xs">{a.email}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {pwSaved[a.id] && (
+                        <span className="text-green-400 text-xs flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3" /> Saved
+                        </span>
+                      )}
+                      <div className="relative">
+                        <input
+                          type={pwShow[a.id] ? 'text' : 'password'}
+                          value={pwValues[a.id] ?? ''}
+                          onChange={e => {
+                            setPwValues(prev => ({ ...prev, [a.id]: e.target.value }))
+                            setPwError(prev => ({ ...prev, [a.id]: '' }))
+                            setPwSaved(prev => ({ ...prev, [a.id]: false }))
+                          }}
+                          placeholder="New password"
+                          className="bg-gray-900 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600 pr-9 w-48"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setPwShow(prev => ({ ...prev, [a.id]: !prev[a.id] }))}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                        >
+                          {pwShow[a.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => savePassword(a.id)}
+                        disabled={pwSaving[a.id] || !pwValues[a.id]}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium rounded-lg transition-colors"
+                      >
+                        {pwSaving[a.id] ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                  {pwError[a.id] && (
+                    <p className="text-red-400 text-xs mt-1.5 text-right">{pwError[a.id]}</p>
+                  )}
                 </div>
               ))}
             </div>

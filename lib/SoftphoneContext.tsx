@@ -370,6 +370,22 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
               }
               audio.srcObject = call.remoteStream
               audio.play().catch(console.error)
+            } else {
+              const retryId = call.id
+              setTimeout(() => {
+                const cur = activeCallRef.current
+                if (cur?.state === 'active' && cur.telnyxCall?.remoteStream) {
+                  let audio = document.getElementById('telnyx-remote-audio') as HTMLAudioElement
+                  if (!audio) {
+                    audio = document.createElement('audio')
+                    audio.id = 'telnyx-remote-audio'
+                    audio.autoplay = true
+                    document.body.appendChild(audio)
+                  }
+                  audio.srcObject = cur.telnyxCall.remoteStream
+                  audio.play().catch(console.error)
+                }
+              }, 1000)
             }
             return
           }
@@ -410,6 +426,21 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
             }
             audio.srcObject = call.remoteStream
             audio.play().catch(console.error)
+          } else {
+            setTimeout(() => {
+              const cur = activeCallRef.current
+              if (cur?.state === 'active' && cur.telnyxCall?.remoteStream) {
+                let audio = document.getElementById('telnyx-remote-audio') as HTMLAudioElement
+                if (!audio) {
+                  audio = document.createElement('audio')
+                  audio.id = 'telnyx-remote-audio'
+                  audio.autoplay = true
+                  document.body.appendChild(audio)
+                }
+                audio.srcObject = cur.telnyxCall.remoteStream
+                audio.play().catch(console.error)
+              }
+            }, 1000)
           }
 
         // ── HANGUP / DESTROY ─────────────────────────────────────────────────
