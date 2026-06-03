@@ -50,7 +50,7 @@ export default function LeadsPage() {
 
   async function dial(phone: string) {
     const number = phone.replace(/\D/g, '').replace(/^1?(\d{10})$/, '+1$1')
-    const ok = await makeCall(number)
+    const ok = await makeCall(number, { bypassCooldown: true })
     if (ok) router.push('/dashboard')
   }
 

@@ -92,7 +92,7 @@ export default function CallbacksPage() {
             <section>
               <p className="text-red-400 text-xs font-semibold uppercase tracking-widest mb-3">Overdue</p>
               <div className="space-y-2">
-                {overdue.map(cb => <CallbackCard key={cb.id} cb={cb} onDone={markDone} onDelete={deleteCallback} onCall={n => { if (!activeCall) { const e164 = n.replace(/\D/g, '').replace(/^1?(\d{10})$/, '+1$1'); makeCall(e164) } }} activeCall={!!activeCall} />)}
+                {overdue.map(cb => <CallbackCard key={cb.id} cb={cb} onDone={markDone} onDelete={deleteCallback} onCall={n => { if (!activeCall) { const e164 = n.replace(/\D/g, '').replace(/^1?(\d{10})$/, '+1$1'); makeCall(e164, { bypassCooldown: true }) } }} activeCall={!!activeCall} />)}
               </div>
             </section>
           )}
@@ -101,7 +101,7 @@ export default function CallbacksPage() {
             <section>
               <p className="text-gray-400 text-xs font-semibold uppercase tracking-widest mb-3">Upcoming</p>
               <div className="space-y-2">
-                {upcoming.map(cb => <CallbackCard key={cb.id} cb={cb} onDone={markDone} onDelete={deleteCallback} onCall={n => { if (!activeCall) { const e164 = n.replace(/\D/g, '').replace(/^1?(\d{10})$/, '+1$1'); makeCall(e164) } }} activeCall={!!activeCall} />)}
+                {upcoming.map(cb => <CallbackCard key={cb.id} cb={cb} onDone={markDone} onDelete={deleteCallback} onCall={n => { if (!activeCall) { const e164 = n.replace(/\D/g, '').replace(/^1?(\d{10})$/, '+1$1'); makeCall(e164, { bypassCooldown: true }) } }} activeCall={!!activeCall} />)}
               </div>
             </section>
           )}
