@@ -27,7 +27,7 @@ export default function Dialpad() {
     if (!number.trim()) return
     const digits = number.replace(/\D/g, '')
     const e164 = digits.replace(/^1?(\d{10})$/, '+1$1')
-    makeCall(e164.startsWith('+') ? e164 : number.trim())
+    makeCall(e164.startsWith('+') ? e164 : number.trim(), { bypassCooldown: true })
     setNumber('')
   }
 
