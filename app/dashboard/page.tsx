@@ -230,7 +230,7 @@ export default function DashboardPage() {
     setWrapup(null)
     setWrapupStep('notes')
     setNotes('')
-    makeCall(e164)
+    makeCall(e164, { bypassCooldown: true })
   }
 
   function dial() {
