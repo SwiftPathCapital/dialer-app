@@ -657,10 +657,17 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     dialingRef.current = true
     setAgentBusy()
 
-    const call = clientRef.current.newCall({
-      destinationNumber: number,
-      callerNumber: agent.extension || agent.sip_username,
-    })
+    let call: any
+    try {
+      call = clientRef.current.newCall({
+        destinationNumber: number,
+        callerNumber: agent.extension || agent.sip_username,
+      })
+    } catch (err) {
+      console.error('newCall failed', err)
+      dialingRef.current = false
+      return false
+    }
     outboundCallIdRef.current = call.id
 
     fetch('/api/calls', {
