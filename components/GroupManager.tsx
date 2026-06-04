@@ -21,6 +21,9 @@ export default function GroupManager() {
   const [editPhone, setEditPhone] = useState('')
   const [editColor, setEditColor] = useState<string | null>(null)
   const [editSaving, setEditSaving] = useState(false)
+  const [editingScript, setEditingScript] = useState(false)
+  const [scriptText, setScriptText] = useState('')
+  const [scriptSaving, setScriptSaving] = useState(false)
 
   const COLOR_PRESETS = [
     '#3b82f6', '#8b5cf6', '#10b981', '#f97316', '#ec4899',
@@ -89,6 +92,38 @@ export default function GroupManager() {
     })
     const loaded = await load()
     const updated = loaded.find(g => g.id === group.id)
+    if (updated) setSelected(updated)
+  }
+
+  async function toggleScript(group: GroupWithMembers) {
+    await fetch('/api/groups', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: group.id, script_enabled: !group.script_enabled }),
+    })
+    const loaded = await load()
+    const updated = loaded.find(g => g.id === group.id)
+    if (updated) setSelected(updated)
+  }
+
+  function startEditScript() {
+    if (!selected) return
+    setScriptText(selected.script_text || '')
+    setEditingScript(true)
+  }
+
+  async function saveScript() {
+    if (!selected) return
+    setScriptSaving(true)
+    await fetch('/api/groups', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: selected.id, script_text: scriptText }),
+    })
+    setScriptSaving(false)
+    setEditingScript(false)
+    const loaded = await load()
+    const updated = loaded.find(g => g.id === selected.id)
     if (updated) setSelected(updated)
   }
 
@@ -259,6 +294,65 @@ export default function GroupManager() {
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
+          </div>
+
+          {/* Script section */}
+          <div className="mb-5 border-t border-gray-700 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <p className="text-gray-300 text-sm font-medium">Call Script</p>
+                <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selected.script_enabled}
+                    onChange={() => toggleScript(selected)}
+                    className="accent-blue-500"
+                  />
+                  Enabled
+                </label>
+              </div>
+              {!editingScript && (
+                <button
+                  onClick={startEditScript}
+                  className="text-gray-500 hover:text-white transition-colors"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {editingScript ? (
+              <div className="space-y-2">
+                <textarea
+                  value={scriptText}
+                  onChange={e => setScriptText(e.target.value)}
+                  rows={12}
+                  placeholder="Write the call script here..."
+                  className="w-full bg-gray-900 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600 resize-y"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={saveScript}
+                    disabled={scriptSaving}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-medium transition-colors"
+                  >
+                    <Check className="w-3 h-3" /> Save Script
+                  </button>
+                  <button
+                    onClick={() => setEditingScript(false)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium transition-colors"
+                  >
+                    <X className="w-3 h-3" /> Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-gray-500 bg-gray-900 rounded-lg px-3 py-2 min-h-[60px] whitespace-pre-wrap">
+                {selected.script_text
+                  ? <span className="text-gray-300">{selected.script_text}</span>
+                  : 'No script written yet. Click the pencil to add one.'}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2 mb-4">

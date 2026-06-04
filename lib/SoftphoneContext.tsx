@@ -72,7 +72,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const ringGainRef = useRef<GainNode | null>(null)   // master gain — zeroed instantly on stopRing
   const ringTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const groupsRef = useRef<Array<{ id: string; name: string; phone_number: string; color: string | null }>>([])
+  const groupsRef = useRef<Array<{ id: string; name: string; phone_number: string; color: string | null; script_enabled: boolean; script_text: string | null }>>([])
   const dialingRef = useRef(false)
   const prevCallRef = useRef<ActiveCall | null>(null)
   const callActiveAtRef = useRef<number | null>(null)
@@ -288,6 +288,10 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
           })
           startRing(groupName ? 'group-inbound' : 'inbound')
 
+          if (groupObj?.script_enabled && groupObj.id) {
+            window.open(`/script?groupId=${groupObj.id}`, 'callscript', 'width=700,height=620,resizable=yes')
+          }
+
           const lookupDigits = remoteNumber.replace(/\D/g, '')
           if (lookupDigits) {
             fetch(`/api/caller-id?phone=${encodeURIComponent(lookupDigits)}`)
@@ -320,6 +324,9 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
                     setActiveCall(prev => prev ? { ...prev, groupName: group!.name, groupId: group!.id, groupColor: group!.color ?? undefined } : null)
                     stopRing()
                     startRing('group-inbound')
+                    if (group.script_enabled) {
+                      window.open(`/script?groupId=${group.id}`, 'callscript', 'width=700,height=620,resizable=yes')
+                    }
                   }
                 } catch {}
               })()
