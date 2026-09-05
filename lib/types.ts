@@ -9,6 +9,7 @@ export interface Agent {
   status: AgentStatus
   role: 'admin' | 'agent'
   extension: string | null
+  did: string | null
   voicemail_greeting_url: string | null
   updated_at: string
 }
