@@ -38,6 +38,54 @@ const SECTIONS = [
     ],
   },
   {
+    title: 'Email (Spacemail)',
+    description: 'Connect your Spacemail mailbox so emails can be sent and received from the dialer.',
+    fields: [
+      {
+        key: 'spacemail_email',
+        label: 'Email Address',
+        description: 'The mailbox address, e.g. you@yourdomain.com',
+        sensitive: false,
+        placeholder: 'you@yourdomain.com',
+      },
+      {
+        key: 'spacemail_password',
+        label: 'Password',
+        description: 'The mailbox password (used for both IMAP and SMTP login).',
+        sensitive: true,
+        placeholder: '••••••••',
+      },
+      {
+        key: 'spacemail_imap_host',
+        label: 'IMAP Host',
+        description: 'Incoming mail server hostname.',
+        sensitive: false,
+        placeholder: 'imap.spacemail.com',
+      },
+      {
+        key: 'spacemail_imap_port',
+        label: 'IMAP Port',
+        description: 'Usually 993 (SSL/TLS).',
+        sensitive: false,
+        placeholder: '993',
+      },
+      {
+        key: 'spacemail_smtp_host',
+        label: 'SMTP Host',
+        description: 'Outgoing mail server hostname.',
+        sensitive: false,
+        placeholder: 'smtp.spacemail.com',
+      },
+      {
+        key: 'spacemail_smtp_port',
+        label: 'SMTP Port',
+        description: 'Usually 465 (SSL) or 587 (STARTTLS).',
+        sensitive: false,
+        placeholder: '465',
+      },
+    ],
+  },
+  {
     title: 'Application',
     description: 'General settings for this dialer deployment.',
     fields: [
