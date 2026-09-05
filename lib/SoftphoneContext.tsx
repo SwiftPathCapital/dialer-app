@@ -668,7 +668,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     try {
       call = clientRef.current.newCall({
         destinationNumber: number,
-        callerNumber: agent.extension || agent.sip_username,
+        callerNumber: agent.did || agent.extension || agent.sip_username,
       })
     } catch (err) {
       console.error('newCall failed', err)
@@ -717,7 +717,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     // Dial the new party via WebRTC
     const call = clientRef.current.newCall({
       destinationNumber: number,
-      callerNumber: agent.extension || agent.sip_username,
+      callerNumber: agent.did || agent.extension || agent.sip_username,
     })
     outboundCallIdRef.current = call.id
 
