@@ -81,10 +81,15 @@ export default function ControlCenterPage() {
         className="absolute inset-0 opacity-40"
         style={{
           backgroundImage:
-            'radial-gradient(1px 1px at 20% 30%, rgba(34,211,238,0.5), transparent), radial-gradient(1px 1px at 70% 60%, rgba(34,211,238,0.4), transparent), radial-gradient(1px 1px at 40% 80%, rgba(34,211,238,0.3), transparent), radial-gradient(1px 1px at 85% 20%, rgba(34,211,238,0.4), transparent), radial-gradient(1px 1px at 10% 70%, rgba(34,211,238,0.3), transparent)',
+            'radial-gradient(1px 1px at 20% 30%, rgba(34,211,238,0.6), transparent), radial-gradient(1px 1px at 70% 60%, rgba(192,132,252,0.5), transparent), radial-gradient(1px 1px at 40% 80%, rgba(236,72,153,0.4), transparent), radial-gradient(1px 1px at 85% 20%, rgba(45,212,191,0.5), transparent), radial-gradient(1px 1px at 10% 70%, rgba(34,211,238,0.4), transparent), radial-gradient(1px 1px at 55% 15%, rgba(192,132,252,0.4), transparent), radial-gradient(1px 1px at 90% 75%, rgba(236,72,153,0.3), transparent)',
           backgroundSize: '100% 100%',
         }}
       />
+      {/* Galaxy color blobs */}
+      <div className="pointer-events-none absolute -top-32 -left-24 w-[420px] h-[420px] rounded-full bg-cyan-500/10 blur-[120px]" />
+      <div className="pointer-events-none absolute top-1/4 -right-32 w-[460px] h-[460px] rounded-full bg-purple-500/10 blur-[130px]" />
+      <div className="pointer-events-none absolute bottom-0 left-1/4 w-[400px] h-[400px] rounded-full bg-fuchsia-500/10 blur-[120px]" />
+      <div className="pointer-events-none absolute bottom-10 right-1/4 w-[360px] h-[360px] rounded-full bg-teal-400/10 blur-[110px]" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(8,145,178,0.08)_0%,_transparent_60%)]" />
 
       <div className="relative z-10 text-center mb-6">
@@ -99,18 +104,24 @@ export default function ControlCenterPage() {
       >
         {/* Decorative rotating rings */}
         <div
-          className="absolute rounded-full border border-cyan-500/20 orbit-ring-slow"
-          style={{ inset: 60 }}
+          className="absolute rounded-full orbit-ring-slow"
+          style={{
+            inset: 60,
+            padding: 1,
+            background: 'conic-gradient(from 0deg, rgba(34,211,238,0.5), rgba(192,132,252,0.5), rgba(236,72,153,0.4), rgba(45,212,191,0.5), rgba(34,211,238,0.5))',
+            WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 1px), #000 calc(100% - 1px))',
+            mask: 'radial-gradient(farthest-side, transparent calc(100% - 1px), #000 calc(100% - 1px))',
+          }}
         />
         <div
-          className="absolute rounded-full border border-cyan-500/10 orbit-ring-slow-reverse"
+          className="absolute rounded-full border border-purple-400/15 orbit-ring-slow-reverse"
           style={{ inset: 10 }}
         />
 
         {/* Center hub */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center w-28 h-28 rounded-full bg-gradient-to-b from-cyan-900/60 to-gray-950 border border-cyan-400/50 orbit-pulse z-20">
-          <Sparkles className="w-6 h-6 text-cyan-300 mb-1" />
-          <span className="text-cyan-200 text-[11px] font-semibold uppercase tracking-wider">Online</span>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center w-28 h-28 rounded-full bg-gradient-to-br from-cyan-900/70 via-purple-950/60 to-gray-950 border border-cyan-400/50 orbit-pulse z-20">
+          <Sparkles className="w-6 h-6 text-cyan-300 mb-1 drop-shadow-[0_0_8px_rgba(192,132,252,0.7)]" />
+          <span className="bg-gradient-to-r from-cyan-300 to-purple-300 bg-clip-text text-transparent text-[11px] font-semibold uppercase tracking-wider">Online</span>
         </div>
 
         {/* Orbs */}
