@@ -21,7 +21,7 @@ const ORBS: Orb[] = [
   { key: 'contacts',   label: 'Contacts',    icon: Users,         href: '/leads',        live: true },
   { key: 'comms',      label: 'Comms',       icon: MessageSquare, href: '/sms',          live: true },
   { key: 'deals',      label: 'Deals',       icon: Handshake,     href: '/deals',        live: false },
-  { key: 'calendar',   label: 'Calendar',    icon: CalendarDays,  href: '/calendar',     live: false },
+  { key: 'calendar',   label: 'Calendar',    icon: CalendarDays,  href: '/calendar',     live: true },
   { key: 'tasks',      label: 'Tasks',       icon: ListTodo,      href: '/tasks',        live: false },
   { key: 'reputation', label: 'Reputation',  icon: Star,          href: '/reputation',   live: false },
   { key: 'reporting',  label: 'Reporting',   icon: BarChart3,     href: '/reporting',    live: false },
