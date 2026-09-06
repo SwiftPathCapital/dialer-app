@@ -24,16 +24,27 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { lead_id, lead_phone, lead_name, agent_id, scheduled_at, notes, dialer_call_id } = body
+  const { lead_id, lead_phone, lead_name, agent_id, scheduled_at, notes, dialer_call_id, event_type } = body
+  const type = event_type || 'callback'
 
-  if (!lead_phone || !agent_id || !scheduled_at) {
+  // Tasks aren't necessarily tied to a phone number; every other event type needs one.
+  if ((!lead_phone && type !== 'task') || !agent_id || !scheduled_at) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
   const db = createServerClient()
   const { data, error } = await db
     .from('dialer_callbacks')
-    .insert({ lead_id: lead_id || null, lead_phone, lead_name: lead_name || null, agent_id, scheduled_at, notes: notes || null, dialer_call_id: dialer_call_id || null })
+    .insert({
+      lead_id: lead_id || null,
+      lead_phone: lead_phone || null,
+      lead_name: lead_name || null,
+      agent_id,
+      scheduled_at,
+      notes: notes || null,
+      dialer_call_id: dialer_call_id || null,
+      event_type: type,
+    })
     .select()
     .single()
 

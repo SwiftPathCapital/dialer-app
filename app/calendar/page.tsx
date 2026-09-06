@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Phone, Check, Trash2, ChevronLeft, ChevronRight, Plus, X, Clock,
+  MapPin, Compass, Users, CheckSquare, LucideIcon,
 } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 
@@ -14,9 +15,23 @@ interface Callback {
   scheduled_at: string
   notes: string | null
   status: string
+  event_type: string
 }
 
 type ViewMode = 'day' | 'week' | 'month'
+type EventType = 'callback' | 'in_person' | 'discovery' | 'meeting' | 'task'
+
+const EVENT_TYPE_META: Record<EventType, { label: string; icon: LucideIcon; badge: string; dot: string; canCall: boolean }> = {
+  callback:  { label: 'Call Back',      icon: Phone,       badge: 'bg-cyan-950/50 border-cyan-700/50 text-cyan-200',       dot: 'bg-cyan-500',   canCall: true },
+  discovery: { label: 'Discovery Appt', icon: Compass,     badge: 'bg-purple-950/50 border-purple-700/50 text-purple-200', dot: 'bg-purple-500', canCall: true },
+  in_person: { label: 'In-Person Appt', icon: MapPin,      badge: 'bg-teal-950/50 border-teal-700/50 text-teal-200',       dot: 'bg-teal-500',   canCall: false },
+  meeting:   { label: 'Meeting',        icon: Users,       badge: 'bg-amber-950/50 border-amber-700/50 text-amber-200',    dot: 'bg-amber-500',  canCall: false },
+  task:      { label: 'Task',           icon: CheckSquare, badge: 'bg-pink-950/50 border-pink-700/50 text-pink-200',       dot: 'bg-pink-500',   canCall: false },
+}
+
+function typeMeta(type: string) {
+  return EVENT_TYPE_META[type as EventType] || EVENT_TYPE_META.callback
+}
 
 const DAY_START_HOUR = 7
 const DAY_END_HOUR = 19
@@ -51,7 +66,7 @@ export default function CalendarPage() {
   const [monthCursor, setMonthCursor] = useState(() => new Date())
   const [view, setView] = useState<ViewMode>('day')
   const [selectedEvent, setSelectedEvent] = useState<Callback | null>(null)
-  const [newForm, setNewForm] = useState<{ time: string; phone: string; name: string; notes: string } | null>(null)
+  const [newForm, setNewForm] = useState<{ time: string; phone: string; name: string; notes: string; type: EventType } | null>(null)
   const [saving, setSaving] = useState(false)
 
   const load = useCallback(() => {
@@ -118,12 +133,13 @@ export default function CalendarPage() {
   }
 
   function openNewFormAt(hour: number) {
-    setNewForm({ time: `${String(hour).padStart(2, '0')}:00`, phone: '', name: '', notes: '' })
+    setNewForm({ time: `${String(hour).padStart(2, '0')}:00`, phone: '', name: '', notes: '', type: 'callback' })
   }
 
   async function submitNewForm(e: React.FormEvent) {
     e.preventDefault()
-    if (!newForm || !agent || !newForm.phone.trim()) return
+    if (!newForm || !agent) return
+    if (newForm.type !== 'task' && !newForm.phone.trim()) return
     setSaving(true)
     const [h, m] = newForm.time.split(':').map(Number)
     const scheduled = new Date(selectedDate)
@@ -132,11 +148,12 @@ export default function CalendarPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        lead_phone: newForm.phone.trim(),
+        lead_phone: newForm.phone.trim() || null,
         lead_name: newForm.name.trim() || null,
         agent_id: agent.id,
         scheduled_at: scheduled.toISOString(),
         notes: newForm.notes.trim() || null,
+        event_type: newForm.type,
       }),
     })
     const data = await res.json()
@@ -201,7 +218,7 @@ export default function CalendarPage() {
                   <p className="text-white text-sm font-medium">
                     {sameDay(d, new Date()) ? 'Today' : d.toLocaleDateString([], { weekday: 'long' })}
                   </p>
-                  <p className="text-gray-500 text-xs">{count > 0 ? `${count} callback${count > 1 ? 's' : ''}` : 'Quiet day'}</p>
+                  <p className="text-gray-500 text-xs">{count > 0 ? `${count} event${count > 1 ? 's' : ''}` : 'Quiet day'}</p>
                 </div>
               </button>
             )
@@ -251,7 +268,7 @@ export default function CalendarPage() {
               onClick={() => openNewFormAt(new Date().getHours())}
               className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-cyan-600 to-purple-600 hover:opacity-90 text-white text-xs font-semibold rounded-lg transition-opacity"
             >
-              <Plus className="w-4 h-4" /> New Callback
+              <Plus className="w-4 h-4" /> New Event
             </button>
           </div>
         </div>
@@ -275,22 +292,29 @@ export default function CalendarPage() {
                     >
                       {hourEvents.length === 0 ? (
                         <span className="text-gray-800 text-xs self-center">&nbsp;</span>
-                      ) : hourEvents.map(cb => (
-                        <div
-                          key={cb.id}
-                          onClick={e => { e.stopPropagation(); setSelectedEvent(cb) }}
-                          className={`px-3 py-2 rounded-lg text-xs cursor-pointer border ${
-                            cb.status === 'completed'
-                              ? 'bg-gray-800/60 border-gray-700 text-gray-500'
-                              : new Date(cb.scheduled_at).getTime() < now
-                              ? 'bg-red-950/50 border-red-800/50 text-red-300'
-                              : 'bg-cyan-950/50 border-cyan-700/50 text-cyan-200'
-                          }`}
-                        >
-                          <p className="font-medium">{cb.lead_name || cb.lead_phone}</p>
-                          <p className="opacity-70">{new Date(cb.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p>
-                        </div>
-                      ))}
+                      ) : hourEvents.map(cb => {
+                        const meta = typeMeta(cb.event_type)
+                        const Icon = meta.icon
+                        return (
+                          <div
+                            key={cb.id}
+                            onClick={e => { e.stopPropagation(); setSelectedEvent(cb) }}
+                            className={`px-3 py-2 rounded-lg text-xs cursor-pointer border ${
+                              cb.status === 'completed'
+                                ? 'bg-gray-800/60 border-gray-700 text-gray-500'
+                                : new Date(cb.scheduled_at).getTime() < now
+                                ? 'bg-red-950/50 border-red-800/50 text-red-300'
+                                : meta.badge
+                            }`}
+                          >
+                            <p className="font-medium flex items-center gap-1">
+                              <Icon className="w-3 h-3 shrink-0" />
+                              {cb.lead_name || cb.lead_phone || meta.label}
+                            </p>
+                            <p className="opacity-70">{new Date(cb.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p>
+                          </div>
+                        )
+                      })}
                     </button>
                   </div>
                 )
@@ -313,7 +337,8 @@ export default function CalendarPage() {
                     <p className="text-gray-600 text-xs mt-1">{events.length} evts</p>
                     <div className="mt-2 space-y-1">
                       {events.slice(0, 3).map(cb => (
-                        <p key={cb.id} className="text-[10px] truncate text-gray-400">
+                        <p key={cb.id} className="text-[10px] truncate text-gray-400 flex items-center gap-1">
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${typeMeta(cb.event_type).dot}`} />
                           {new Date(cb.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} {cb.lead_name || cb.lead_phone}
                         </p>
                       ))}
@@ -349,7 +374,7 @@ export default function CalendarPage() {
                       } ${!inMonth ? 'opacity-30' : ''}`}
                     >
                       <span className={`text-xs ${sameDay(d, new Date()) ? 'text-cyan-400 font-bold' : 'text-gray-300'}`}>{d.getDate()}</span>
-                      {events.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 mt-1" />}
+                      {events.length > 0 && <span className={`w-1.5 h-1.5 rounded-full mt-1 ${typeMeta(events[0].event_type).dot}`} />}
                     </button>
                   )
                 })}
@@ -372,10 +397,17 @@ export default function CalendarPage() {
           <p className="text-gray-500 text-xs uppercase tracking-widest mb-3">Selected</p>
           {!selectedEvent ? (
             <p className="text-gray-600 text-sm">No event selected.</p>
-          ) : (
+          ) : (() => {
+            const meta = typeMeta(selectedEvent.event_type)
+            const Icon = meta.icon
+            const canCall = meta.canCall && !!selectedEvent.lead_phone
+            return (
             <div>
-              <p className="text-white text-sm font-medium">{selectedEvent.lead_name || selectedEvent.lead_phone}</p>
-              {selectedEvent.lead_name && <p className="text-gray-500 text-xs">{selectedEvent.lead_phone}</p>}
+              <p className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 border mb-2 ${meta.badge}`}>
+                <Icon className="w-3 h-3" /> {meta.label}
+              </p>
+              <p className="text-white text-sm font-medium">{selectedEvent.lead_name || selectedEvent.lead_phone || meta.label}</p>
+              {selectedEvent.lead_name && selectedEvent.lead_phone && <p className="text-gray-500 text-xs">{selectedEvent.lead_phone}</p>}
               <p className="text-cyan-400 text-xs mt-1 flex items-center gap-1">
                 <Clock className="w-3 h-3" />
                 {new Date(selectedEvent.scheduled_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
@@ -383,13 +415,15 @@ export default function CalendarPage() {
               {selectedEvent.notes && <p className="text-gray-400 text-xs mt-2 italic">"{selectedEvent.notes}"</p>}
               {selectedEvent.status !== 'completed' ? (
                 <div className="flex gap-2 mt-3">
-                  <button
-                    onClick={() => callNow(selectedEvent.lead_phone)}
-                    disabled={!!activeCall}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white text-xs rounded-lg transition-colors"
-                  >
-                    <Phone className="w-3 h-3" /> Call
-                  </button>
+                  {canCall && (
+                    <button
+                      onClick={() => callNow(selectedEvent.lead_phone)}
+                      disabled={!!activeCall}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white text-xs rounded-lg transition-colors"
+                    >
+                      <Phone className="w-3 h-3" /> Call
+                    </button>
+                  )}
                   <button
                     onClick={() => markDone(selectedEvent.id)}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded-lg transition-colors"
@@ -407,26 +441,48 @@ export default function CalendarPage() {
                 <p className="text-gray-600 text-xs mt-3">Completed</p>
               )}
             </div>
-          )}
+            )
+          })()}
         </div>
       </div>
 
-      {/* New callback modal */}
+      {/* New event modal */}
       {newForm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <form onSubmit={submitNewForm} className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-semibold">New Callback — {selectedDate.toLocaleDateString([], { month: 'short', day: 'numeric' })}</h3>
+              <h3 className="text-white font-semibold">New {typeMeta(newForm.type).label} — {selectedDate.toLocaleDateString([], { month: 'short', day: 'numeric' })}</h3>
               <button type="button" onClick={() => setNewForm(null)} className="text-gray-500 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            <div className="grid grid-cols-3 gap-1.5 mb-4">
+              {(Object.entries(EVENT_TYPE_META) as [EventType, typeof EVENT_TYPE_META[EventType]][]).map(([key, meta]) => {
+                const Icon = meta.icon
+                const active = newForm.type === key
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setNewForm({ ...newForm, type: key })}
+                    className={`flex flex-col items-center gap-1 py-2 rounded-lg border text-[10px] font-medium transition-colors ${
+                      active ? meta.badge : 'bg-gray-800 border-gray-700 text-gray-500 hover:border-gray-600'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {meta.label}
+                  </button>
+                )
+              })}
+            </div>
+
             <div className="space-y-3">
               <input
                 value={newForm.phone}
                 onChange={e => setNewForm({ ...newForm, phone: e.target.value })}
-                placeholder="Phone number"
-                required
+                placeholder={newForm.type === 'task' ? 'Phone number (optional)' : 'Phone number'}
+                required={newForm.type !== 'task'}
                 className="w-full bg-gray-800 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-cyan-500 placeholder-gray-600"
               />
               <input
@@ -452,10 +508,10 @@ export default function CalendarPage() {
             </div>
             <button
               type="submit"
-              disabled={saving || !newForm.phone.trim()}
+              disabled={saving || (newForm.type !== 'task' && !newForm.phone.trim())}
               className="w-full mt-4 py-2.5 bg-gradient-to-r from-cyan-600 to-purple-600 hover:opacity-90 disabled:opacity-40 text-white font-semibold text-sm rounded-lg transition-opacity"
             >
-              {saving ? 'Saving…' : 'Schedule Callback'}
+              {saving ? 'Saving…' : `Schedule ${typeMeta(newForm.type).label}`}
             </button>
           </form>
         </div>
