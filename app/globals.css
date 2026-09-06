@@ -54,11 +54,30 @@ body {
   will-change: transform;
 }
 
+@keyframes neon-pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px 0 var(--glow-color), 0 0 2px 0 var(--glow-color) inset;
+  }
+  50% {
+    box-shadow: 0 0 20px 4px var(--glow-color), 0 0 8px 1px var(--glow-color) inset;
+  }
+}
+
+.neon-pulse {
+  animation: neon-pulse-glow 2.4s ease-in-out infinite;
+  will-change: box-shadow;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .orbit-ring-slow,
   .orbit-ring-slow-reverse,
   .orbit-core-glow,
-  .orbit-drift-wrap {
+  .orbit-drift-wrap,
+  .neon-pulse {
     animation: none !important;
+  }
+
+  .neon-pulse {
+    box-shadow: 0 0 8px 1px var(--glow-color);
   }
 }

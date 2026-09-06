@@ -21,12 +21,12 @@ interface Callback {
 type ViewMode = 'day' | 'week' | 'month'
 type EventType = 'callback' | 'in_person' | 'discovery' | 'meeting' | 'task'
 
-const EVENT_TYPE_META: Record<EventType, { label: string; icon: LucideIcon; badge: string; dot: string; canCall: boolean }> = {
-  callback:  { label: 'Call Back',      icon: Phone,       badge: 'bg-cyan-950/50 border-cyan-700/50 text-cyan-200',       dot: 'bg-cyan-500',   canCall: true },
-  discovery: { label: 'Discovery Appt', icon: Compass,     badge: 'bg-purple-950/50 border-purple-700/50 text-purple-200', dot: 'bg-purple-500', canCall: true },
-  in_person: { label: 'In-Person Appt', icon: MapPin,      badge: 'bg-teal-950/50 border-teal-700/50 text-teal-200',       dot: 'bg-teal-500',   canCall: false },
-  meeting:   { label: 'Meeting',        icon: Users,       badge: 'bg-amber-950/50 border-amber-700/50 text-amber-200',    dot: 'bg-amber-500',  canCall: false },
-  task:      { label: 'Task',           icon: CheckSquare, badge: 'bg-pink-950/50 border-pink-700/50 text-pink-200',       dot: 'bg-pink-500',   canCall: false },
+const EVENT_TYPE_META: Record<EventType, { label: string; icon: LucideIcon; badge: string; dot: string; glow: string; canCall: boolean }> = {
+  callback:  { label: 'Call Back',      icon: Phone,       badge: 'bg-cyan-950/50 border-cyan-700/50 text-cyan-200',       dot: 'bg-cyan-500',   glow: '#22d3ee', canCall: true },
+  discovery: { label: 'Discovery Appt', icon: Compass,     badge: 'bg-purple-950/50 border-purple-700/50 text-purple-200', dot: 'bg-purple-500', glow: '#c084fc', canCall: true },
+  in_person: { label: 'In-Person Appt', icon: MapPin,      badge: 'bg-teal-950/50 border-teal-700/50 text-teal-200',       dot: 'bg-teal-500',   glow: '#2dd4bf', canCall: false },
+  meeting:   { label: 'Meeting',        icon: Users,       badge: 'bg-amber-950/50 border-amber-700/50 text-amber-200',    dot: 'bg-amber-500',  glow: '#fbbf24', canCall: false },
+  task:      { label: 'Task',           icon: CheckSquare, badge: 'bg-pink-950/50 border-pink-700/50 text-pink-200',       dot: 'bg-pink-500',   glow: '#f472b6', canCall: false },
 }
 
 function typeMeta(type: string) {
@@ -458,7 +458,7 @@ export default function CalendarPage() {
             </div>
 
             <div className="grid grid-cols-3 gap-1.5 mb-4">
-              {(Object.entries(EVENT_TYPE_META) as [EventType, typeof EVENT_TYPE_META[EventType]][]).map(([key, meta]) => {
+              {(Object.entries(EVENT_TYPE_META) as [EventType, typeof EVENT_TYPE_META[EventType]][]).map(([key, meta], i) => {
                 const Icon = meta.icon
                 const active = newForm.type === key
                 return (
@@ -466,9 +466,15 @@ export default function CalendarPage() {
                     key={key}
                     type="button"
                     onClick={() => setNewForm({ ...newForm, type: key })}
-                    className={`flex flex-col items-center gap-1 py-2 rounded-lg border text-[10px] font-medium transition-colors ${
-                      active ? meta.badge : 'bg-gray-800 border-gray-700 text-gray-500 hover:border-gray-600'
+                    className={`neon-pulse flex flex-col items-center gap-1 py-2 rounded-lg border text-[10px] font-semibold transition-all ${
+                      active ? 'bg-gray-800/90 border-white/30 scale-105' : 'bg-gray-900/80 border-gray-800 hover:border-gray-600'
                     }`}
+                    style={{
+                      // @ts-expect-error CSS custom property, consumed by .neon-pulse's keyframes
+                      '--glow-color': meta.glow,
+                      color: meta.glow,
+                      animationDelay: `${i * 0.3}s`,
+                    }}
                   >
                     <Icon className="w-3.5 h-3.5" />
                     {meta.label}
