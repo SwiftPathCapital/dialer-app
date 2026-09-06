@@ -78,19 +78,31 @@ export default function ControlCenterPage() {
     <div className="relative min-h-screen bg-[#050810] overflow-hidden flex flex-col items-center justify-center px-4 py-10">
       {/* Starfield-ish backdrop */}
       <div
-        className="absolute inset-0 opacity-40"
+        className="absolute inset-0 opacity-70"
         style={{
           backgroundImage:
-            'radial-gradient(1px 1px at 20% 30%, rgba(34,211,238,0.6), transparent), radial-gradient(1px 1px at 70% 60%, rgba(192,132,252,0.5), transparent), radial-gradient(1px 1px at 40% 80%, rgba(236,72,153,0.4), transparent), radial-gradient(1px 1px at 85% 20%, rgba(45,212,191,0.5), transparent), radial-gradient(1px 1px at 10% 70%, rgba(34,211,238,0.4), transparent), radial-gradient(1px 1px at 55% 15%, rgba(192,132,252,0.4), transparent), radial-gradient(1px 1px at 90% 75%, rgba(236,72,153,0.3), transparent)',
+            'radial-gradient(1.5px 1.5px at 20% 30%, rgba(34,211,238,0.9), transparent), radial-gradient(1.5px 1.5px at 70% 60%, rgba(232,121,249,0.85), transparent), radial-gradient(1.5px 1.5px at 40% 80%, rgba(236,72,153,0.8), transparent), radial-gradient(1.5px 1.5px at 85% 20%, rgba(56,189,248,0.85), transparent), radial-gradient(1.5px 1.5px at 10% 70%, rgba(34,211,238,0.8), transparent), radial-gradient(1.5px 1.5px at 55% 15%, rgba(232,121,249,0.8), transparent), radial-gradient(1.5px 1.5px at 90% 75%, rgba(236,72,153,0.7), transparent), radial-gradient(1px 1px at 30% 50%, rgba(255,255,255,0.6), transparent), radial-gradient(1px 1px at 65% 35%, rgba(255,255,255,0.5), transparent), radial-gradient(1px 1px at 15% 90%, rgba(255,255,255,0.5), transparent)',
           backgroundSize: '100% 100%',
         }}
       />
-      {/* Galaxy color blobs */}
-      <div className="pointer-events-none absolute -top-32 -left-24 w-[420px] h-[420px] rounded-full bg-cyan-500/10 blur-[120px]" />
-      <div className="pointer-events-none absolute top-1/4 -right-32 w-[460px] h-[460px] rounded-full bg-purple-500/10 blur-[130px]" />
-      <div className="pointer-events-none absolute bottom-0 left-1/4 w-[400px] h-[400px] rounded-full bg-fuchsia-500/10 blur-[120px]" />
-      <div className="pointer-events-none absolute bottom-10 right-1/4 w-[360px] h-[360px] rounded-full bg-teal-400/10 blur-[110px]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(8,145,178,0.08)_0%,_transparent_60%)]" />
+      {/* Apex neon energy blobs — hot pink + electric blue, high saturation */}
+      <div className="pointer-events-none absolute -top-40 -left-32 w-[520px] h-[520px] rounded-full bg-fuchsia-600/30 blur-[110px]" />
+      <div className="pointer-events-none absolute top-1/3 -right-40 w-[540px] h-[540px] rounded-full bg-sky-500/30 blur-[120px]" />
+      <div className="pointer-events-none absolute bottom-0 left-1/4 w-[480px] h-[480px] rounded-full bg-pink-500/25 blur-[110px]" />
+      <div className="pointer-events-none absolute bottom-16 right-1/4 w-[420px] h-[420px] rounded-full bg-cyan-400/25 blur-[100px]" />
+      <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] rounded-full bg-purple-500/20 blur-[100px]" />
+
+      {/* Diagonal neon energy streaks, Apex brand signature */}
+      <div
+        className="pointer-events-none absolute top-[-10%] left-[-20%] w-[140%] h-[140px] blur-3xl opacity-40"
+        style={{ background: 'linear-gradient(90deg, transparent, rgba(232,121,249,0.7), transparent)', transform: 'rotate(-18deg)' }}
+      />
+      <div
+        className="pointer-events-none absolute bottom-[-15%] right-[-20%] w-[140%] h-[120px] blur-3xl opacity-40"
+        style={{ background: 'linear-gradient(90deg, transparent, rgba(56,189,248,0.7), transparent)', transform: 'rotate(-18deg)' }}
+      />
+
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(5,8,16,0)_0%,_rgba(5,8,16,0.75)_65%,_rgba(5,8,16,0.95)_100%)]" />
 
       <div className="relative z-10 text-center mb-6">
         <p className="text-cyan-500/70 text-xs uppercase tracking-[0.3em]">Control Center</p>
