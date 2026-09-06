@@ -48,7 +48,7 @@ export default function LoginPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ access_token: authData.session?.access_token, role: agent.role }),
     }).catch(() => {})
-    router.push('/dashboard')
+    router.push('/control-center')
     setLoading(false)
   }
 
