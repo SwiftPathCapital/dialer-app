@@ -458,7 +458,7 @@ export default function CalendarPage() {
             </div>
 
             <div className="grid grid-cols-3 gap-1.5 mb-4">
-              {(Object.entries(EVENT_TYPE_META) as [EventType, typeof EVENT_TYPE_META[EventType]][]).map(([key, meta], i) => {
+              {(Object.entries(EVENT_TYPE_META) as [EventType, typeof EVENT_TYPE_META[EventType]][]).map(([key, meta]) => {
                 const Icon = meta.icon
                 const active = newForm.type === key
                 return (
@@ -466,15 +466,14 @@ export default function CalendarPage() {
                     key={key}
                     type="button"
                     onClick={() => setNewForm({ ...newForm, type: key })}
-                    className={`neon-pulse flex flex-col items-center gap-1 py-2 rounded-lg border text-[10px] font-semibold transition-all ${
-                      active ? 'bg-gray-800/90 border-white/30 scale-105' : 'bg-gray-900/80 border-gray-800 hover:border-gray-600'
+                    className={`flex flex-col items-center gap-1 py-2 rounded-lg border text-[10px] font-semibold transition-all ${
+                      active ? 'neon-pulse bg-gray-800/90 border-white/30 scale-105' : 'bg-gray-900/80 border-gray-800 text-gray-500 hover:border-gray-600'
                     }`}
-                    style={{
+                    style={active ? {
                       // @ts-expect-error CSS custom property, consumed by .neon-pulse's keyframes
                       '--glow-color': meta.glow,
                       color: meta.glow,
-                      animationDelay: `${i * 0.3}s`,
-                    }}
+                    } : undefined}
                   >
                     <Icon className="w-3.5 h-3.5" />
                     {meta.label}
