@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock, List, Tag, Orbit, Sparkles } from 'lucide-react'
+import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock, CalendarDays, List, Tag, Orbit, Sparkles } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import { supabase } from '@/lib/supabase'
 import Tour from '@/components/Tour'
@@ -22,6 +22,7 @@ const ADMIN_NAV = [
   { href: '/admin/analytics',  icon: BarChart2,          label: 'Analytics',  dataTour: '' },
   { href: '/admin/calls',      icon: PhoneCall,          label: 'Call Center',dataTour: 'nav-calls' },
   { href: '/admin/callbacks',  icon: CalendarClock,      label: 'Callbacks',  dataTour: '' },
+  { href: '/admin/calendars',  icon: CalendarDays,       label: 'Calendars',  dataTour: '' },
   { href: '/admin/groups',     icon: Users,              label: 'Groups',     dataTour: 'nav-groups' },
   { href: '/admin/tags',       icon: Tag,                label: 'Tags',       dataTour: '' },
   { href: '/admin/config',     icon: SlidersHorizontal,  label: 'Config',     dataTour: '' },

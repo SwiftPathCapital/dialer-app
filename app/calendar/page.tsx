@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Phone, Check, Trash2, ChevronLeft, ChevronRight, Plus, X, Clock,
-  MapPin, Compass, Users, CheckSquare, LucideIcon,
+  MapPin, Compass, Users, CheckSquare, LucideIcon, CalendarDays, ChevronUp, ChevronDown,
 } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 
@@ -16,6 +16,19 @@ interface Callback {
   notes: string | null
   status: string
   event_type: string
+  calendar_id: string | null
+}
+
+interface CalendarMeta {
+  id: string
+  name: string
+  color: string
+  type: 'personal' | 'team'
+  owner_agent_id: string | null
+  group_id: string | null
+  calendar_groups: { id: string; name: string } | null
+  can_edit: boolean
+  visible: boolean
 }
 
 type ViewMode = 'day' | 'week' | 'month'
@@ -62,26 +75,74 @@ export default function CalendarPage() {
 
   const [callbacks, setCallbacks] = useState<Callback[]>([])
   const [loading, setLoading] = useState(true)
+  const [calendars, setCalendars] = useState<CalendarMeta[]>([])
+  const [calendarsLoading, setCalendarsLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState(() => new Date())
   const [monthCursor, setMonthCursor] = useState(() => new Date())
   const [view, setView] = useState<ViewMode>('day')
   const [selectedEvent, setSelectedEvent] = useState<Callback | null>(null)
-  const [newForm, setNewForm] = useState<{ time: string; phone: string; name: string; notes: string; type: EventType; typeChosen: boolean } | null>(null)
+  const [newForm, setNewForm] = useState<{ time: string; phone: string; name: string; notes: string; type: EventType; typeChosen: boolean; calendarId: string } | null>(null)
   const [saving, setSaving] = useState(false)
 
-  const load = useCallback(() => {
+  const loadCalendars = useCallback(() => {
     if (!agent) return
-    fetch(`/api/callbacks?agent_id=${agent.id}&status=all`)
+    fetch(`/api/calendars?agent_id=${agent.id}`)
       .then(r => r.json())
-      .then(d => { setCallbacks(Array.isArray(d) ? d : []); setLoading(false) })
-      .catch(() => setLoading(false))
+      .then(d => { setCalendars(Array.isArray(d) ? d : []); setCalendarsLoading(false) })
+      .catch(() => setCalendarsLoading(false))
   }, [agent])
 
   useEffect(() => {
     if (agentLoading) return
     if (!agent) { router.push('/login'); return }
+    loadCalendars()
+  }, [agent, agentLoading, router, loadCalendars])
+
+  const calendarById = useMemo(() => new Map(calendars.map(c => [c.id, c])), [calendars])
+  const visibleCalendarIds = useMemo(() => calendars.filter(c => c.visible).map(c => c.id), [calendars])
+  const editableCalendars = useMemo(() => calendars.filter(c => c.can_edit), [calendars])
+  const personalCalendar = useMemo(() => calendars.find(c => c.type === 'personal'), [calendars])
+
+  // Team calendars grouped for the sidebar checklist — grouped ones under their
+  // admin-defined group, ungrouped team calendars in their own bucket.
+  const teamCalendarGroups = useMemo(() => {
+    const groups = new Map<string, { id: string; name: string; calendars: CalendarMeta[] }>()
+    const ungrouped: CalendarMeta[] = []
+    for (const cal of calendars) {
+      if (cal.type === 'personal') continue
+      if (cal.group_id && cal.calendar_groups) {
+        if (!groups.has(cal.group_id)) groups.set(cal.group_id, { id: cal.group_id, name: cal.calendar_groups.name, calendars: [] })
+        groups.get(cal.group_id)!.calendars.push(cal)
+      } else {
+        ungrouped.push(cal)
+      }
+    }
+    return { groups: Array.from(groups.values()), ungrouped }
+  }, [calendars])
+
+  const load = useCallback(() => {
+    if (!agent) return
+    if (visibleCalendarIds.length === 0) { setCallbacks([]); setLoading(false); return }
+    fetch(`/api/callbacks?calendar_ids=${visibleCalendarIds.join(',')}&status=all`)
+      .then(r => r.json())
+      .then(d => { setCallbacks(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [agent, visibleCalendarIds])
+
+  useEffect(() => {
+    if (calendarsLoading) return
     load()
-  }, [agent, agentLoading, router, load])
+  }, [calendarsLoading, load])
+
+  async function setCalendarVisibility(calendarIds: string[], visible: boolean) {
+    if (!agent) return
+    setCalendars(prev => prev.map(c => calendarIds.includes(c.id) ? { ...c, visible } : c))
+    await fetch('/api/calendars/visibility', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: agent.id, calendar_ids: calendarIds, visible }),
+    }).catch(() => {})
+  }
 
   const now = Date.now()
   const pending = useMemo(() => callbacks.filter(c => c.status === 'pending'), [callbacks])
@@ -133,7 +194,10 @@ export default function CalendarPage() {
   }
 
   function openNewFormAt(hour: number) {
-    setNewForm({ time: `${String(hour).padStart(2, '0')}:00`, phone: '', name: '', notes: '', type: 'callback', typeChosen: false })
+    setNewForm({
+      time: `${String(hour).padStart(2, '0')}:00`, phone: '', name: '', notes: '',
+      type: 'callback', typeChosen: false, calendarId: personalCalendar?.id || '',
+    })
   }
 
   async function submitNewForm(e: React.FormEvent) {
@@ -154,6 +218,7 @@ export default function CalendarPage() {
         scheduled_at: scheduled.toISOString(),
         notes: newForm.notes.trim() || null,
         event_type: newForm.type,
+        calendar_id: newForm.calendarId || undefined,
       }),
     })
     const data = await res.json()
@@ -223,6 +288,38 @@ export default function CalendarPage() {
               </button>
             )
           })}
+        </div>
+
+        {/* Calendars checklist — which calendars show up below */}
+        <div className="px-3 py-3 border-t border-gray-800 space-y-3">
+          <p className="text-gray-500 text-[10px] font-semibold uppercase tracking-widest flex items-center gap-1.5">
+            <CalendarDays className="w-3 h-3" /> My Calendars
+          </p>
+          {personalCalendar && (
+            <CalendarCheckbox
+              cal={personalCalendar}
+              onToggle={v => setCalendarVisibility([personalCalendar.id], v)}
+            />
+          )}
+
+          {teamCalendarGroups.groups.map(group => (
+            <CalendarGroupChecklist
+              key={group.id}
+              name={group.name}
+              calendars={group.calendars}
+              onToggleGroup={v => setCalendarVisibility(group.calendars.map(c => c.id), v)}
+              onToggleOne={(id, v) => setCalendarVisibility([id], v)}
+            />
+          ))}
+
+          {teamCalendarGroups.ungrouped.length > 0 && (
+            <CalendarGroupChecklist
+              name="Team Calendars"
+              calendars={teamCalendarGroups.ungrouped}
+              onToggleGroup={v => setCalendarVisibility(teamCalendarGroups.ungrouped.map(c => c.id), v)}
+              onToggleOne={(id, v) => setCalendarVisibility([id], v)}
+            />
+          )}
         </div>
 
         {/* Selected day summary card */}
@@ -295,10 +392,12 @@ export default function CalendarPage() {
                       ) : hourEvents.map(cb => {
                         const meta = typeMeta(cb.event_type)
                         const Icon = meta.icon
+                        const cal = cb.calendar_id ? calendarById.get(cb.calendar_id) : undefined
                         return (
                           <div
                             key={cb.id}
                             onClick={e => { e.stopPropagation(); setSelectedEvent(cb) }}
+                            style={cal ? { borderLeftColor: cal.color, borderLeftWidth: 3 } : undefined}
                             className={`px-3 py-2 rounded-lg text-xs cursor-pointer border ${
                               cb.status === 'completed'
                                 ? 'bg-gray-800/60 border-gray-700 text-gray-500'
@@ -312,6 +411,7 @@ export default function CalendarPage() {
                               {cb.lead_name || cb.lead_phone || meta.label}
                             </p>
                             <p className="opacity-70">{new Date(cb.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p>
+                            {cal && calendars.length > 1 && <p className="opacity-60 truncate">{cal.name}</p>}
                           </div>
                         )
                       })}
@@ -459,6 +559,21 @@ export default function CalendarPage() {
               </button>
             </div>
 
+            {editableCalendars.length > 1 && (
+              <div className="mb-3">
+                <label className="text-gray-500 text-[10px] uppercase tracking-widest mb-1 block">Calendar</label>
+                <select
+                  value={newForm.calendarId}
+                  onChange={e => setNewForm({ ...newForm, calendarId: e.target.value })}
+                  className="w-full bg-gray-800 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-cyan-500"
+                >
+                  {editableCalendars.map(cal => (
+                    <option key={cal.id} value={cal.id}>{cal.type === 'personal' ? `${cal.name} (Personal)` : cal.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="grid grid-cols-3 gap-1.5 mb-4">
               {(Object.entries(EVENT_TYPE_META) as [EventType, typeof EVENT_TYPE_META[EventType]][]).map(([key, meta], i) => {
                 const Icon = meta.icon
@@ -528,6 +643,66 @@ export default function CalendarPage() {
               {saving ? 'Saving…' : `Schedule ${typeMeta(newForm.type).label}`}
             </button>
           </form>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CalendarCheckbox({ cal, onToggle }: { cal: CalendarMeta; onToggle: (visible: boolean) => void }) {
+  return (
+    <label className="flex items-center gap-2 cursor-pointer group">
+      <input
+        type="checkbox"
+        checked={cal.visible}
+        onChange={e => onToggle(e.target.checked)}
+        className="w-3.5 h-3.5 rounded shrink-0"
+        style={{ accentColor: cal.color }}
+      />
+      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: cal.color }} />
+      <span className="text-gray-300 text-xs truncate group-hover:text-white transition-colors">{cal.name}</span>
+    </label>
+  )
+}
+
+function CalendarGroupChecklist({ name, calendars, onToggleGroup, onToggleOne }: {
+  name: string
+  calendars: CalendarMeta[]
+  onToggleGroup: (visible: boolean) => void
+  onToggleOne: (calendarId: string, visible: boolean) => void
+}) {
+  const [expanded, setExpanded] = useState(true)
+  const allVisible = calendars.every(c => c.visible)
+  const noneVisible = calendars.every(c => !c.visible)
+  const groupRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (groupRef.current) groupRef.current.indeterminate = !allVisible && !noneVisible
+  }, [allVisible, noneVisible])
+
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <input
+          ref={groupRef}
+          type="checkbox"
+          checked={allVisible}
+          onChange={e => onToggleGroup(e.target.checked)}
+          className="w-3.5 h-3.5 rounded shrink-0 accent-gray-400"
+        />
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="flex-1 flex items-center justify-between text-left text-gray-400 text-xs font-medium hover:text-white transition-colors"
+        >
+          {name}
+          {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+        </button>
+      </div>
+      {expanded && (
+        <div className="mt-1.5 ml-5 space-y-1.5">
+          {calendars.map(cal => (
+            <CalendarCheckbox key={cal.id} cal={cal} onToggle={v => onToggleOne(cal.id, v)} />
+          ))}
         </div>
       )}
     </div>

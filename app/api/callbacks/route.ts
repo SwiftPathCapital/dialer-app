@@ -6,6 +6,7 @@ export async function GET(req: NextRequest) {
   const agentId = searchParams.get('agent_id')
   const all = searchParams.get('all') === 'true'
   const status = searchParams.get('status') || 'pending'
+  const calendarIdsParam = searchParams.get('calendar_ids')
 
   const db = createServerClient()
 
@@ -15,7 +16,12 @@ export async function GET(req: NextRequest) {
     .order('scheduled_at', { ascending: true })
 
   if (status !== 'all') query = query.eq('status', status)
-  if (!all && agentId) query = query.eq('agent_id', agentId)
+  if (calendarIdsParam) {
+    const ids = calendarIdsParam.split(',').filter(Boolean)
+    query = query.in('calendar_id', ids)
+  } else if (!all && agentId) {
+    query = query.eq('agent_id', agentId)
+  }
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -24,7 +30,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { lead_id, lead_phone, lead_name, agent_id, scheduled_at, notes, dialer_call_id, event_type } = body
+  const { lead_id, lead_phone, lead_name, agent_id, scheduled_at, notes, dialer_call_id, event_type, calendar_id } = body
   const type = event_type || 'callback'
 
   // Tasks aren't necessarily tied to a phone number; every other event type needs one.
@@ -33,6 +39,28 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerClient()
+
+  let targetCalendarId: string | null = calendar_id || null
+  if (targetCalendarId) {
+    const { data: membership } = await db
+      .from('calendar_members')
+      .select('can_edit')
+      .eq('calendar_id', targetCalendarId)
+      .eq('agent_id', agent_id)
+      .single()
+    if (!membership?.can_edit) {
+      return NextResponse.json({ error: 'You do not have permission to schedule on this calendar' }, { status: 403 })
+    }
+  } else {
+    const { data: personalCal } = await db
+      .from('calendars')
+      .select('id')
+      .eq('owner_agent_id', agent_id)
+      .eq('type', 'personal')
+      .single()
+    targetCalendarId = personalCal?.id ?? null
+  }
+
   const { data, error } = await db
     .from('dialer_callbacks')
     .insert({
@@ -44,6 +72,7 @@ export async function POST(req: NextRequest) {
       notes: notes || null,
       dialer_call_id: dialer_call_id || null,
       event_type: type,
+      calendar_id: targetCalendarId,
     })
     .select()
     .single()
