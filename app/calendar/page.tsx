@@ -66,7 +66,7 @@ export default function CalendarPage() {
   const [monthCursor, setMonthCursor] = useState(() => new Date())
   const [view, setView] = useState<ViewMode>('day')
   const [selectedEvent, setSelectedEvent] = useState<Callback | null>(null)
-  const [newForm, setNewForm] = useState<{ time: string; phone: string; name: string; notes: string; type: EventType } | null>(null)
+  const [newForm, setNewForm] = useState<{ time: string; phone: string; name: string; notes: string; type: EventType; typeChosen: boolean } | null>(null)
   const [saving, setSaving] = useState(false)
 
   const load = useCallback(() => {
@@ -133,7 +133,7 @@ export default function CalendarPage() {
   }
 
   function openNewFormAt(hour: number) {
-    setNewForm({ time: `${String(hour).padStart(2, '0')}:00`, phone: '', name: '', notes: '', type: 'callback' })
+    setNewForm({ time: `${String(hour).padStart(2, '0')}:00`, phone: '', name: '', notes: '', type: 'callback', typeChosen: false })
   }
 
   async function submitNewForm(e: React.FormEvent) {
@@ -451,28 +451,37 @@ export default function CalendarPage() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <form onSubmit={submitNewForm} className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-semibold">New {typeMeta(newForm.type).label} — {selectedDate.toLocaleDateString([], { month: 'short', day: 'numeric' })}</h3>
+              <h3 className="text-white font-semibold">
+                {newForm.typeChosen ? `New ${typeMeta(newForm.type).label}` : 'New Event'} — {selectedDate.toLocaleDateString([], { month: 'short', day: 'numeric' })}
+              </h3>
               <button type="button" onClick={() => setNewForm(null)} className="text-gray-500 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="grid grid-cols-3 gap-1.5 mb-4">
-              {(Object.entries(EVENT_TYPE_META) as [EventType, typeof EVENT_TYPE_META[EventType]][]).map(([key, meta]) => {
+              {(Object.entries(EVENT_TYPE_META) as [EventType, typeof EVENT_TYPE_META[EventType]][]).map(([key, meta], i) => {
                 const Icon = meta.icon
-                const active = newForm.type === key
+                const active = newForm.typeChosen && newForm.type === key
+                // Before a type is chosen, all 5 pills chase-glow in sequence; after, only the chosen one pulses.
+                const glowing = active || !newForm.typeChosen
                 return (
                   <button
                     key={key}
                     type="button"
-                    onClick={() => setNewForm({ ...newForm, type: key })}
+                    onClick={() => setNewForm({ ...newForm, type: key, typeChosen: true })}
                     className={`flex flex-col items-center gap-1 py-2 rounded-lg border text-[10px] font-semibold transition-all ${
-                      active ? 'neon-pulse bg-gray-800/90 border-white/30 scale-105' : 'bg-gray-900/80 border-gray-800 text-gray-500 hover:border-gray-600'
+                      active
+                        ? 'neon-pulse bg-gray-800/90 border-white/30 scale-105'
+                        : glowing
+                        ? 'neon-pulse bg-gray-900/80 border-gray-800'
+                        : 'bg-gray-900/80 border-gray-800 text-gray-500 hover:border-gray-600'
                     }`}
-                    style={active ? {
+                    style={glowing ? {
                       // @ts-expect-error CSS custom property, consumed by .neon-pulse's keyframes
                       '--glow-color': meta.glow,
                       color: meta.glow,
+                      animationDelay: newForm.typeChosen ? undefined : `${i * 0.45}s`,
                     } : undefined}
                   >
                     <Icon className="w-3.5 h-3.5" />
