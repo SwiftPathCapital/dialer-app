@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
 
   let query = db
     .from('leads')
-    .select('id, name, first_name, last_name, phone, company_name, email, state, city, status, lead_type, lead_type_label, assigned_to, created_at, revenue, monthly_deposit, requested_amount, tib, fico, employee_size, why_funds, last_called_at')
+    .select('id, name, first_name, last_name, phone, company_name, email, state, city, status, lead_type, lead_type_label, assigned_to, created_at, revenue, monthly_deposit, requested_amount, tib, fico, employee_size, why_funds, last_called_at, lead_tags(tags(id, name, color))')
     .order('created_at', { ascending: false })
     .limit(limit)
 
@@ -43,20 +43,27 @@ export async function GET(req: NextRequest) {
     query = query.ilike('phone', `%${phone}%`)
   } else {
     if (agentId) {
-      query = query.or(`assigned_to.eq.${agentId},assigned_to.is.null`)
-
-      // Filter by active lead sources when loading the dialer queue
-      const { data: configRow } = await db
-        .from('app_config')
-        .select('value')
-        .eq('key', 'dialer_lead_sources')
+      // Agents with can_view_all_leads see the full pool; others only their
+      // assigned leads plus unassigned ones.
+      const { data: agentRow } = await db
+        .from('agents')
+        .select('can_view_all_leads')
+        .eq('id', agentId)
         .single()
 
-      let activeSources: string[] = []
-      try { activeSources = JSON.parse(configRow?.value ?? '[]') } catch { activeSources = [] }
+      if (!agentRow?.can_view_all_leads) {
+        query = query.or(`assigned_to.eq.${agentId},assigned_to.is.null`)
+      }
+
+      // Filter by enabled lead sources when loading the dialer queue
+      const { data: sourceRows } = await db
+        .from('lead_sources')
+        .select('name')
+        .eq('enabled', true)
+
+      const activeSources = (sourceRows ?? []).map(r => r.name)
 
       if (activeSources.length > 0) {
-        // Supabase .in() doesn't trim, so include all trimmed variants
         query = query.in('lead_type', activeSources)
       }
 
@@ -75,10 +82,17 @@ export async function GET(req: NextRequest) {
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Flatten the lead_tags(tags(...)) join into a plain tags[] array
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const flattened = (data ?? []).map((row: any) => {
+    const { lead_tags, ...rest } = row
+    return { ...rest, tags: (lead_tags ?? []).map((lt: any) => lt.tags).filter(Boolean) }
+  })
+
   // Shuffle the dialer queue per agent so they don't all start on the same lead
   const result = (agentId && !phone && !search)
-    ? seededShuffle(data ?? [], agentSeed(agentId))
-    : (data ?? [])
+    ? seededShuffle(flattened, agentSeed(agentId))
+    : flattened
 
   return NextResponse.json(result)
 }

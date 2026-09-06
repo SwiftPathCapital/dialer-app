@@ -2,10 +2,22 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, Save, CheckCircle, XCircle, RefreshCw, Upload, Mic, Filter, KeyRound } from 'lucide-react'
+import { Eye, EyeOff, Save, CheckCircle, XCircle, RefreshCw, Upload, Mic, Filter, KeyRound, Plus, Trash2, ShieldCheck } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 
-type Agent = { id: string; name: string; email: string; voicemail_greeting_url: string | null }
+type Agent = {
+  id: string; name: string; email: string; voicemail_greeting_url: string | null
+  can_view_all_leads?: boolean; hidden_features?: string[]
+}
+type LeadSource = { id: string; name: string; enabled: boolean }
+
+const TOGGLEABLE_FEATURES = [
+  { key: '/dashboard', label: 'Softphone' },
+  { key: '/sms',       label: 'SMS' },
+  { key: '/voicemail', label: 'Voicemail' },
+  { key: '/callbacks', label: 'Callbacks' },
+  { key: '/calls',     label: 'Call Log' },
+]
 
 type ConfigStatus = Record<string, { isSet: boolean; updated_at: string | null }>
 
@@ -115,10 +127,11 @@ export default function ConfigPage() {
   const [greetingSaved, setGreetingSaved] = useState<Record<string, boolean>>({})
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
-  const [leadSourceTypes, setLeadSourceTypes] = useState<string[]>([])
-  const [activeSources, setActiveSources] = useState<string[]>([])
-  const [sourcesSaving, setSourcesSaving] = useState(false)
-  const [sourcesSaved, setSourcesSaved] = useState(false)
+  const [leadSources, setLeadSources] = useState<LeadSource[]>([])
+  const [newSourceName, setNewSourceName] = useState('')
+  const [sourceSaving, setSourceSaving] = useState(false)
+  const [permSaving, setPermSaving] = useState<Record<string, boolean>>({})
+  const [permSaved, setPermSaved] = useState<Record<string, boolean>>({})
 
   const [pwValues, setPwValues] = useState<Record<string, string>>({})
   const [pwShow, setPwShow] = useState<Record<string, boolean>>({})
@@ -131,11 +144,14 @@ export default function ConfigPage() {
     if (!agent) { router.push('/login'); return }
     loadStatus()
     fetch('/api/agents').then(r => r.json()).then(data => { if (Array.isArray(data)) setAgents(data as Agent[]) }).catch(() => {})
-    fetch('/api/admin/lead-sources').then(r => r.json()).then(d => {
-      if (Array.isArray(d.types)) setLeadSourceTypes(d.types)
-      if (Array.isArray(d.active)) setActiveSources(d.active)
-    }).catch(() => {})
+    loadSources()
   }, [agent, agentLoading, router])
+
+  async function loadSources() {
+    const res = await fetch('/api/admin/lead-sources')
+    const d = await res.json()
+    if (Array.isArray(d.sources)) setLeadSources(d.sources)
+  }
 
   async function loadStatus() {
     setLoading(true)
@@ -150,23 +166,51 @@ export default function ConfigPage() {
     setSaved(prev => ({ ...prev, [key]: false }))
   }
 
-  function toggleSource(type: string) {
-    setActiveSources(prev =>
-      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
-    )
-    setSourcesSaved(false)
-  }
-
-  async function saveLeadSources() {
-    setSourcesSaving(true)
+  async function addSource(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newSourceName.trim()) return
+    setSourceSaving(true)
     await fetch('/api/admin/lead-sources', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sources: activeSources }),
+      body: JSON.stringify({ name: newSourceName.trim() }),
     })
-    setSourcesSaving(false)
-    setSourcesSaved(true)
-    setTimeout(() => setSourcesSaved(false), 3000)
+    setNewSourceName('')
+    setSourceSaving(false)
+    loadSources()
+  }
+
+  async function toggleSourceEnabled(source: LeadSource) {
+    setLeadSources(prev => prev.map(s => s.id === source.id ? { ...s, enabled: !s.enabled } : s))
+    await fetch('/api/admin/lead-sources', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: source.id, enabled: !source.enabled }),
+    }).catch(() => {})
+  }
+
+  async function deleteSource(id: string) {
+    setLeadSources(prev => prev.filter(s => s.id !== id))
+    await fetch(`/api/admin/lead-sources?id=${id}`, { method: 'DELETE' }).catch(() => {})
+  }
+
+  async function savePermission(agentId: string, updates: Partial<Agent>) {
+    setAgents(prev => prev.map(a => a.id === agentId ? { ...a, ...updates } : a))
+    setPermSaving(prev => ({ ...prev, [agentId]: true }))
+    await fetch('/api/agents', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: agentId, ...updates }),
+    }).catch(() => {})
+    setPermSaving(prev => ({ ...prev, [agentId]: false }))
+    setPermSaved(prev => ({ ...prev, [agentId]: true }))
+    setTimeout(() => setPermSaved(prev => ({ ...prev, [agentId]: false })), 2000)
+  }
+
+  function toggleFeatureHidden(a: Agent, featureKey: string) {
+    const hidden = a.hidden_features ?? []
+    const next = hidden.includes(featureKey) ? hidden.filter(f => f !== featureKey) : [...hidden, featureKey]
+    savePermission(a.id, { hidden_features: next })
   }
 
   async function savePassword(agentId: string) {
@@ -358,48 +402,111 @@ export default function ConfigPage() {
           {/* Dialer Lead Sources */}
           <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-700">
-              <h2 className="text-white font-semibold flex items-center gap-2"><Filter className="w-4 h-4" /> Dialer Lead Sources</h2>
-              <p className="text-gray-400 text-sm mt-0.5">Only leads from checked sources will appear in the agent dialer queue. Uncheck a source to stop agents from seeing those leads.</p>
+              <h2 className="text-white font-semibold flex items-center gap-2"><Filter className="w-4 h-4" /> Lead Sources</h2>
+              <p className="text-gray-400 text-sm mt-0.5">Create lead sources and control which ones appear in the agent dialer queue.</p>
             </div>
             <div className="px-6 py-5">
-              {leadSourceTypes.length === 0 ? (
-                <p className="text-gray-500 text-sm">No lead sources found in the database.</p>
+              <form onSubmit={addSource} className="flex items-center gap-2 mb-4">
+                <input
+                  value={newSourceName}
+                  onChange={e => setNewSourceName(e.target.value)}
+                  placeholder="e.g. Facebook Ads, Referral, Cold List"
+                  className="flex-1 bg-gray-900 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600"
+                />
+                <button
+                  type="submit"
+                  disabled={sourceSaving || !newSourceName.trim()}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors shrink-0"
+                >
+                  <Plus className="w-4 h-4" /> Add
+                </button>
+              </form>
+
+              {leadSources.length === 0 ? (
+                <p className="text-gray-500 text-sm">No lead sources yet — add one above.</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
-                  {leadSourceTypes.map(type => {
-                    const on = activeSources.includes(type)
-                    return (
-                      <button
-                        key={type}
-                        onClick={() => toggleSource(type)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                          on
-                            ? 'bg-blue-600 border-blue-500 text-white'
-                            : 'bg-gray-900 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500'
-                        }`}
-                      >
-                        {type}
-                        {on && <span className="ml-2 text-blue-300 text-xs">✓</span>}
+                  {leadSources.map(source => (
+                    <div
+                      key={source.id}
+                      className={`flex items-center gap-2 pl-4 pr-2 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                        source.enabled
+                          ? 'bg-blue-600 border-blue-500 text-white'
+                          : 'bg-gray-900 border-gray-700 text-gray-400'
+                      }`}
+                    >
+                      <button onClick={() => toggleSourceEnabled(source)} className="hover:opacity-80">
+                        {source.name} {source.enabled && <span className="text-blue-200 text-xs">✓</span>}
                       </button>
-                    )
-                  })}
+                      <button onClick={() => deleteSource(source.id)} className="text-gray-400 hover:text-red-400">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
-              {activeSources.length === 0 && leadSourceTypes.length > 0 && (
-                <p className="text-yellow-500 text-xs mt-3">⚠ No sources selected — all leads will be shown.</p>
+              {leadSources.length > 0 && leadSources.every(s => !s.enabled) && (
+                <p className="text-yellow-500 text-xs mt-3">⚠ No sources enabled — all leads will be shown regardless of source.</p>
               )}
             </div>
-            <div className="px-6 py-4 bg-gray-900/30 flex items-center justify-between">
-              <span className={`text-sm transition-all ${sourcesSaved ? 'text-green-400' : 'text-transparent'}`}>
-                Saved successfully
-              </span>
-              <button
-                onClick={saveLeadSources}
-                disabled={sourcesSaving}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
-              >
-                {sourcesSaving ? <><RefreshCw className="w-4 h-4 animate-spin" /> Saving...</> : <><Save className="w-4 h-4" /> Save Sources</>}
-              </button>
+          </div>
+
+          {/* Agent Permissions */}
+          <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-700">
+              <h2 className="text-white font-semibold flex items-center gap-2"><ShieldCheck className="w-4 h-4" /> Agent Permissions</h2>
+              <p className="text-gray-400 text-sm mt-0.5">Control what each agent can see: all contacts vs. only their own, and which nav features are visible.</p>
+            </div>
+            <div className="divide-y divide-gray-700">
+              {agents.map(a => (
+                <div key={a.id} className="px-6 py-4">
+                  <div className="flex items-center justify-between gap-4 mb-3">
+                    <div className="min-w-0">
+                      <p className="text-white text-sm font-medium">{a.name}</p>
+                      <p className="text-gray-500 text-xs">{a.email}</p>
+                    </div>
+                    {permSaving[a.id] ? (
+                      <span className="text-gray-500 text-xs flex items-center gap-1 shrink-0">
+                        <RefreshCw className="w-3 h-3 animate-spin" /> Saving...
+                      </span>
+                    ) : permSaved[a.id] ? (
+                      <span className="text-green-400 text-xs flex items-center gap-1 shrink-0">
+                        <CheckCircle className="w-3 h-3" /> Saved
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <label className="flex items-center gap-2 mb-3 cursor-pointer w-fit">
+                    <input
+                      type="checkbox"
+                      checked={!!a.can_view_all_leads}
+                      onChange={() => savePermission(a.id, { can_view_all_leads: !a.can_view_all_leads })}
+                      className="w-4 h-4 rounded accent-blue-600"
+                    />
+                    <span className="text-gray-300 text-sm">Can view all contacts and conversations (not just assigned)</span>
+                  </label>
+
+                  <p className="text-gray-500 text-xs uppercase tracking-widest mb-1.5">Visible Features</p>
+                  <div className="flex flex-wrap gap-2">
+                    {TOGGLEABLE_FEATURES.map(f => {
+                      const hidden = (a.hidden_features ?? []).includes(f.key)
+                      return (
+                        <button
+                          key={f.key}
+                          onClick={() => toggleFeatureHidden(a, f.key)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                            hidden
+                              ? 'bg-gray-900 border-gray-700 text-gray-500'
+                              : 'bg-blue-600 border-blue-500 text-white'
+                          }`}
+                        >
+                          {f.label} {!hidden && '✓'}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 

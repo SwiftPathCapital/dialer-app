@@ -11,6 +11,8 @@ export interface Agent {
   extension: string | null
   did: string | null
   voicemail_greeting_url: string | null
+  can_view_all_leads: boolean
+  hidden_features: string[]
   updated_at: string
 }
 
@@ -78,6 +80,13 @@ export interface Lead {
   employee_size: string | null
   why_funds: string | null
   last_called_at: string | null
+  tags?: Tag[]
+}
+
+export interface Tag {
+  id: string
+  name: string
+  color: string
 }
 
 export interface SMSConversation {

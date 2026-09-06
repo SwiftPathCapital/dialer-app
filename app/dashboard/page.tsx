@@ -2,14 +2,14 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Clock, PhoneIncoming, PhoneOutgoing, SkipForward, Phone, Mail, RotateCcw } from 'lucide-react'
+import { Clock, PhoneIncoming, PhoneOutgoing, SkipForward, Phone, Mail, RotateCcw, Plus, X } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import Dialpad from '@/components/Dialpad'
 import ActiveCall from '@/components/ActiveCall'
 import StatusSelector from '@/components/StatusSelector'
 import VoicemailGreeting from '@/components/VoicemailGreeting'
 import NewLeadForm from '@/components/NewLeadForm'
-import { Lead, Call } from '@/lib/types'
+import { Lead, Call, Tag } from '@/lib/types'
 
 const DISPOSITIONS = [
   { label: 'Interested',          color: 'bg-green-700 hover:bg-green-600' },
@@ -46,6 +46,8 @@ export default function DashboardPage() {
   const [newLeadModal, setNewLeadModal] = useState<{ phone: string; direction: 'inbound' | 'outbound' } | null>(null)
   const newLeadShownForRef = useRef<string | null>(null) // tracks which call.id triggered the modal
   const prevCallRef = useRef(activeCall)
+  const [allTags, setAllTags] = useState<Tag[]>([])
+  const [tagMenuOpen, setTagMenuOpen] = useState(false)
 
   useEffect(() => {
     if (agentLoading) return
@@ -54,7 +56,29 @@ export default function DashboardPage() {
       .then(r => r.json())
       .then(d => setLeads(Array.isArray(d) ? d : []))
       .catch(() => {})
+    fetch('/api/admin/tags').then(r => r.json()).then(d => setAllTags(Array.isArray(d) ? d : [])).catch(() => {})
   }, [agent, agentLoading, router])
+
+  // Apply a tag-list update to whichever state currently holds this lead
+  function applyTagsUpdate(leadId: string, tags: Tag[]) {
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tags } : l))
+    setInboundLead(prev => prev && prev.id === leadId ? { ...prev, tags } : prev)
+    setDialedLead(prev => prev && prev.id === leadId ? { ...prev, tags } : prev)
+  }
+
+  async function toggleTag(leadId: string, currentTags: Tag[], tag: Tag) {
+    const has = currentTags.some(t => t.id === tag.id)
+    applyTagsUpdate(leadId, has ? currentTags.filter(t => t.id !== tag.id) : [...currentTags, tag])
+    if (has) {
+      await fetch(`/api/leads/tags?lead_id=${leadId}&tag_id=${tag.id}`, { method: 'DELETE' }).catch(() => {})
+    } else {
+      await fetch('/api/leads/tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lead_id: leadId, tag_id: tag.id }),
+      }).catch(() => {})
+    }
+  }
 
   const lead = leads[index] ?? null
 
@@ -495,6 +519,49 @@ export default function DashboardPage() {
                 <p className="text-white font-semibold text-lg mt-2">{company}</p>
                 {contact && <p className="text-gray-400 text-sm">{contact}</p>}
                 <p className="text-gray-500 text-sm">{displayedLead?.phone}</p>
+
+                {displayedLead && (
+                  <div className="flex flex-wrap items-center gap-1.5 mt-3 relative">
+                    {(displayedLead.tags ?? []).map(tag => (
+                      <span
+                        key={tag.id}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                        style={{ backgroundColor: tag.color }}
+                      >
+                        {tag.name}
+                        <button onClick={() => toggleTag(displayedLead.id, displayedLead.tags ?? [], tag)} className="hover:opacity-70">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                    <button
+                      onClick={() => setTagMenuOpen(p => !p)}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs text-gray-400 border border-dashed border-gray-600 hover:text-white hover:border-gray-400 transition-colors"
+                    >
+                      <Plus className="w-3 h-3" /> Tag
+                    </button>
+                    {tagMenuOpen && (
+                      <div className="absolute top-full left-0 mt-1 w-48 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-20 py-1 max-h-56 overflow-y-auto">
+                        {allTags.length === 0 ? (
+                          <p className="text-gray-500 text-xs px-3 py-2">No tags yet — create one in Admin → Tags.</p>
+                        ) : allTags.map(tag => {
+                          const applied = (displayedLead.tags ?? []).some(t => t.id === tag.id)
+                          return (
+                            <button
+                              key={tag.id}
+                              onClick={() => toggleTag(displayedLead.id, displayedLead.tags ?? [], tag)}
+                              className="flex items-center gap-2 w-full px-3 py-1.5 text-left text-xs hover:bg-gray-800 transition-colors"
+                            >
+                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
+                              <span className={applied ? 'text-white' : 'text-gray-400'}>{tag.name}</span>
+                              {applied && <span className="ml-auto text-blue-400">✓</span>}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="border-t border-gray-700 mt-4 pt-4 space-y-2">
                   {displayedLead?.email && <Row label="Email" value={displayedLead.email} />}

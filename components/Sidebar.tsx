@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock, List } from 'lucide-react'
+import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock, List, Tag } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import { supabase } from '@/lib/supabase'
 import Tour from '@/components/Tour'
@@ -22,6 +22,7 @@ const ADMIN_NAV = [
   { href: '/admin/calls',      icon: PhoneCall,          label: 'Call Center',dataTour: 'nav-calls' },
   { href: '/admin/callbacks',  icon: CalendarClock,      label: 'Callbacks',  dataTour: '' },
   { href: '/admin/groups',     icon: Users,              label: 'Groups',     dataTour: 'nav-groups' },
+  { href: '/admin/tags',       icon: Tag,                label: 'Tags',       dataTour: '' },
   { href: '/admin/config',     icon: SlidersHorizontal,  label: 'Config',     dataTour: '' },
 ]
 
@@ -122,7 +123,7 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 py-4 px-2 flex flex-col gap-0.5">
-        {NAV.map(({ href, icon: Icon, label, dataTour }) => {
+        {NAV.filter(({ href }) => !agent?.hidden_features?.includes(href)).map(({ href, icon: Icon, label, dataTour }) => {
           const active = pathname === href
           const badge = href === '/voicemail' && unreadVoicemails > 0 ? unreadVoicemails : 0
           return (

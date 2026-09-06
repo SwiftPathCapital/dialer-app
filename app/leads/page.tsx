@@ -114,6 +114,19 @@ export default function LeadsPage() {
                     {lead.state && <span> · {lead.state}</span>}
                   </p>
                 </div>
+                {lead.tags && lead.tags.length > 0 && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    {lead.tags.map(tag => (
+                      <span
+                        key={tag.id}
+                        className="px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                        style={{ backgroundColor: tag.color }}
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {lead.status && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-300 shrink-0">
                     {lead.status}
