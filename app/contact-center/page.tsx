@@ -137,25 +137,29 @@ export default function ContactCenterPage() {
   }
 
   async function sendReply() {
-    if (!draft.trim() || sending || !detail?.sms_conversation_id || !detail.our_number) return
+    const fromNumber = detail?.our_number || agent?.did
+    if (!draft.trim() || sending || !detail || !fromNumber) return
     setSending(true)
     try {
       await fetch('/api/sms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          conversation_id: detail.sms_conversation_id,
-          from: detail.our_number,
+          conversation_id: detail.sms_conversation_id || undefined,
+          from: fromNumber,
           to: detail.contact_number,
           body: draft.trim(),
         }),
       })
       setDraft('')
       if (selectedKey) loadDetail(selectedKey, detail.contact_number)
+      loadThreads()
     } finally {
       setSending(false)
     }
   }
+
+  const canSend = !!(detail?.our_number || agent?.did)
 
   function onKey(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -313,14 +317,14 @@ export default function ContactCenterPage() {
                 value={draft}
                 onChange={e => setDraft(e.target.value)}
                 onKeyDown={onKey}
-                disabled={!detail?.sms_conversation_id}
-                placeholder={detail?.sms_conversation_id ? 'Type a message…' : 'No SMS conversation with this contact yet'}
+                disabled={!canSend}
+                placeholder={canSend ? 'Type a message…' : 'Set your outbound number in Admin → Config to send messages'}
                 rows={1}
                 className="flex-1 bg-gray-800 text-white rounded-lg px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-cyan-500 placeholder-gray-600 disabled:opacity-50"
               />
               <button
                 onClick={sendReply}
-                disabled={!draft.trim() || sending || !detail?.sms_conversation_id}
+                disabled={!draft.trim() || sending || !canSend}
                 className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white p-2 rounded-lg transition-colors shrink-0"
               >
                 <Send className="w-5 h-5" />
