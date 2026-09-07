@@ -111,17 +111,17 @@ function DispoTable({ rows, total, title, icon }: {
   )
 }
 
-function DetailModal({ detailKey, range, onClose }: { detailKey: DetailKey; range: Range; onClose: () => void }) {
+function DetailModal({ detailKey, range, agentId, onClose }: { detailKey: DetailKey; range: Range; agentId: string; onClose: () => void }) {
   const [calls, setCalls] = useState<CallDetail[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     setLoading(true)
-    fetch(`/api/admin/analytics?range=${range}&detail=${detailKey}`)
+    fetch(`/api/admin/analytics?range=${range}&detail=${detailKey}&agent_id=${agentId}`)
       .then(r => r.json())
       .then(d => { setCalls(Array.isArray(d) ? d : []); setLoading(false) })
       .catch(() => setLoading(false))
-  }, [detailKey, range])
+  }, [detailKey, range, agentId])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -258,10 +258,10 @@ export default function AnalyticsPage() {
   const [pipeline, setPipeline] = useState<LeadSourceRow[]>([])
   const [pipelineLoading, setPipelineLoading] = useState(true)
 
-  const load = useCallback(async (r: Range) => {
+  const load = useCallback(async (r: Range, agentId: string) => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/admin/analytics?range=${r}`)
+      const res = await fetch(`/api/admin/analytics?range=${r}&agent_id=${agentId}`)
       const json = await res.json()
       setData(json)
     } finally {
@@ -272,8 +272,8 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (agentLoading) return
     if (!agent) { router.push('/login'); return }
-    load(range)
-    fetch('/api/admin/lead-pipeline')
+    load(range, agent.id)
+    fetch(`/api/admin/lead-pipeline?agent_id=${agent.id}`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setPipeline(d) })
       .finally(() => setPipelineLoading(false))
@@ -384,6 +384,7 @@ export default function AnalyticsPage() {
         <DetailModal
           detailKey={openDetail}
           range={range}
+          agentId={agent.id}
           onClose={() => setOpenDetail(null)}
         />
       )}

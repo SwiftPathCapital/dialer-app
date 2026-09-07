@@ -56,17 +56,18 @@ export default function AdminCalendarsPage() {
   const [addingMemberFor, setAddingMemberFor] = useState<string | null>(null)
 
   const load = useCallback(() => {
+    if (!agent) return
     Promise.all([
-      fetch('/api/calendars?all=true').then(r => r.json()),
-      fetch('/api/admin/calendar-groups').then(r => r.json()),
-      fetch('/api/agents').then(r => r.json()),
+      fetch(`/api/calendars?all=true&agent_id=${agent.id}`).then(r => r.json()),
+      fetch(`/api/admin/calendar-groups?agent_id=${agent.id}`).then(r => r.json()),
+      fetch(`/api/agents?agent_id=${agent.id}`).then(r => r.json()),
     ]).then(([cals, grps, ags]) => {
       setCalendars(Array.isArray(cals) ? cals : [])
       setGroups(Array.isArray(grps) ? grps : [])
       setAgents(Array.isArray(ags) ? ags : [])
       setLoading(false)
     }).catch(() => setLoading(false))
-  }, [])
+  }, [agent])
 
   useEffect(() => {
     if (agentLoading) return
@@ -86,7 +87,7 @@ export default function AdminCalendarsPage() {
     await fetch('/api/calendars', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newCalName.trim(), color: newCalColor, group_id: newCalGroup || null }),
+      body: JSON.stringify({ name: newCalName.trim(), color: newCalColor, group_id: newCalGroup || null, agent_id: agent?.id }),
     })
     setNewCalName('')
     setNewCalColor(COLORS[0])
@@ -136,7 +137,7 @@ export default function AdminCalendarsPage() {
     await fetch('/api/admin/calendar-groups', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newGroupName.trim() }),
+      body: JSON.stringify({ name: newGroupName.trim(), agent_id: agent?.id }),
     })
     setNewGroupName('')
     setSavingGroup(false)

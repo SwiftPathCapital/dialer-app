@@ -143,19 +143,19 @@ export default function ConfigPage() {
     if (agentLoading) return
     if (!agent) { router.push('/login'); return }
     loadStatus()
-    fetch('/api/agents').then(r => r.json()).then(data => { if (Array.isArray(data)) setAgents(data as Agent[]) }).catch(() => {})
+    fetch(`/api/agents?agent_id=${agent.id}`).then(r => r.json()).then(data => { if (Array.isArray(data)) setAgents(data as Agent[]) }).catch(() => {})
     loadSources()
   }, [agent, agentLoading, router])
 
   async function loadSources() {
-    const res = await fetch('/api/admin/lead-sources')
+    const res = await fetch(`/api/admin/lead-sources${agent ? `?agent_id=${agent.id}` : ''}`)
     const d = await res.json()
     if (Array.isArray(d.sources)) setLeadSources(d.sources)
   }
 
   async function loadStatus() {
     setLoading(true)
-    const res = await fetch('/api/config')
+    const res = await fetch(`/api/config${agent ? `?agent_id=${agent.id}` : ''}`)
     const data = await res.json()
     setStatus(data)
     setLoading(false)
@@ -173,7 +173,7 @@ export default function ConfigPage() {
     await fetch('/api/admin/lead-sources', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newSourceName.trim() }),
+      body: JSON.stringify({ name: newSourceName.trim(), agent_id: agent?.id }),
     })
     setNewSourceName('')
     setSourceSaving(false)
@@ -266,7 +266,7 @@ export default function ConfigPage() {
       await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, agent_id: agent?.id }),
       })
     }
 

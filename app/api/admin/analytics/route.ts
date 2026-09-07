@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 
 function rangeStart(range: string): string {
   const now = new Date()
@@ -22,14 +22,17 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const range = searchParams.get('range') || 'today'
   const detail = searchParams.get('detail') // 'all' | 'inbound' | 'outbound' | 'apps' | 'funded'
+  const agentId = searchParams.get('agent_id')
   const db = createServerClient()
+  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
 
   // Exclude ghost rows created by old Dialpad double-POST bug (null telnyx_call_control_id)
-  const baseQuery = db
+  let baseQuery = db
     .from('dialer_calls')
     .select('direction, disposition, status, from_number, to_number, started_at, duration_seconds, agents(id, name)')
     .gte('started_at', rangeStart(range))
     .not('telnyx_call_control_id', 'is', null)
+  if (tenantId) baseQuery = baseQuery.eq('tenant_id', tenantId)
 
   const { data: calls } = await baseQuery
   if (!calls) return NextResponse.json({ error: 'Query failed' }, { status: 500 })

@@ -3,21 +3,23 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, Tag as TagIcon } from 'lucide-react'
 import { Tag } from '@/lib/types'
+import { useSoftphone } from '@/lib/SoftphoneContext'
 
 const COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#eab308', '#a855f7', '#ec4899', '#f97316', '#14b8a6']
 
 export default function TagsPage() {
+  const { agent } = useSoftphone()
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
   const [name, setName] = useState('')
   const [color, setColor] = useState(COLORS[0])
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [agent])
 
   async function load() {
     setLoading(true)
-    const res = await fetch('/api/admin/tags')
+    const res = await fetch(`/api/admin/tags${agent ? `?agent_id=${agent.id}` : ''}`)
     const data = await res.json()
     setTags(Array.isArray(data) ? data : [])
     setLoading(false)
@@ -30,7 +32,7 @@ export default function TagsPage() {
     await fetch('/api/admin/tags', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim(), color }),
+      body: JSON.stringify({ name: name.trim(), color, agent_id: agent?.id }),
     })
     setName('')
     setColor(COLORS[0])

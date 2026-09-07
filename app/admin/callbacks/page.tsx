@@ -37,18 +37,19 @@ export default function AdminCallbacksPage() {
   const [showCompleted, setShowCompleted] = useState(false)
 
   const load = useCallback(() => {
-    const params = new URLSearchParams({ all: 'true', status: 'all' })
+    if (!agent) return
+    const params = new URLSearchParams({ all: 'true', status: 'all', requester_id: agent.id })
     if (filterAgent) params.set('agent_id', filterAgent)
     fetch(`/api/callbacks?${params}`)
       .then(r => r.json())
       .then(d => { setCallbacks(Array.isArray(d) ? d : []); setLoading(false) })
       .catch(() => setLoading(false))
-  }, [filterAgent])
+  }, [filterAgent, agent])
 
   useEffect(() => {
     if (agentLoading) return
     if (!agent || agent.role !== 'admin') { router.push('/dashboard'); return }
-    fetch('/api/agents').then(r => r.json()).then(d => setAgents(Array.isArray(d) ? d : []))
+    fetch(`/api/agents?agent_id=${agent.id}`).then(r => r.json()).then(d => setAgents(Array.isArray(d) ? d : []))
     load()
   }, [agent, agentLoading, router, load])
 

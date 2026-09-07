@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 
 // Deterministic per-agent shuffle so no two agents start on the same lead.
 // Uses the agent's UUID as a seed → same agent always gets the same order,
@@ -32,12 +32,15 @@ export async function GET(req: NextRequest) {
   const limit = parseInt(searchParams.get('limit') || '100')
 
   const db = createServerClient()
+  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
 
   let query = db
     .from('leads')
     .select('id, name, first_name, last_name, phone, company_name, email, state, city, status, lead_type, lead_type_label, assigned_to, created_at, revenue, monthly_deposit, requested_amount, tib, fico, employee_size, why_funds, last_called_at, lead_tags(tags(id, name, color))')
     .order('created_at', { ascending: false })
     .limit(limit)
+
+  if (tenantId) query = query.eq('tenant_id', tenantId)
 
   if (phone) {
     query = query.ilike('phone', `%${phone}%`)
@@ -56,10 +59,9 @@ export async function GET(req: NextRequest) {
       }
 
       // Filter by enabled lead sources when loading the dialer queue
-      const { data: sourceRows } = await db
-        .from('lead_sources')
-        .select('name')
-        .eq('enabled', true)
+      let sourcesQuery = db.from('lead_sources').select('name').eq('enabled', true)
+      if (tenantId) sourcesQuery = sourcesQuery.eq('tenant_id', tenantId)
+      const { data: sourceRows } = await sourcesQuery
 
       const activeSources = (sourceRows ?? []).map(r => r.name)
 
@@ -109,6 +111,7 @@ export async function PATCH(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const db = createServerClient()
+  const tenantId = body.agent_id ? await getAgentTenantId(db, body.agent_id) : null
 
   const { data, error } = await db
     .from('leads')
@@ -124,6 +127,7 @@ export async function POST(req: NextRequest) {
       status:         'New',
       assigned_to:    body.agent_id       || null,
       created_at:     new Date().toISOString(),
+      ...(tenantId ? { tenant_id: tenantId } : {}),
     })
     .select()
     .single()

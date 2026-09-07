@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function flattenCalendar(row: any) {
@@ -21,10 +21,15 @@ export async function GET(req: NextRequest) {
   const db = createServerClient()
 
   if (all) {
-    // Admin console view: every calendar, with its member list for management UI.
+    // Admin console view: every calendar in the requesting admin's tenant, with its member list.
+    if (!agentId) return NextResponse.json({ error: 'agent_id is required' }, { status: 400 })
+    const tenantId = await getAgentTenantId(db, agentId)
+    if (!tenantId) return NextResponse.json({ error: 'Unknown agent' }, { status: 404 })
+
     const { data, error } = await db
       .from('calendars')
       .select('id, name, color, type, owner_agent_id, group_id, created_at, calendar_groups(id, name), calendar_members(agent_id, can_edit, agents(id, name))')
+      .eq('tenant_id', tenantId)
       .order('type', { ascending: false }) // team calendars first
       .order('name')
 
@@ -61,13 +66,18 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { name, color, group_id } = await req.json()
+  const { name, color, group_id, agent_id } = await req.json()
   if (!name?.trim()) return NextResponse.json({ error: 'name is required' }, { status: 400 })
 
   const db = createServerClient()
+  const tenantId = agent_id ? await getAgentTenantId(db, agent_id) : null
+
   const { data, error } = await db
     .from('calendars')
-    .insert({ name: name.trim(), color: color || '#a78bfa', type: 'team', group_id: group_id || null })
+    .insert({
+      name: name.trim(), color: color || '#a78bfa', type: 'team', group_id: group_id || null,
+      ...(tenantId ? { tenant_id: tenantId } : {}),
+    })
     .select()
     .single()
 

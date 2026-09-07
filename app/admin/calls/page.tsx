@@ -313,14 +313,15 @@ export default function AdminCallsPage() {
   useEffect(() => {
     if (agentLoading) return
     if (!agent) { router.push('/login'); return }
-    fetch('/api/agents').then(r => r.json()).then(d => setAgents(Array.isArray(d) ? d : []))
+    fetch(`/api/agents?agent_id=${agent.id}`).then(r => r.json()).then(d => setAgents(Array.isArray(d) ? d : []))
     loadCalls('')
     loadVoicemails()
   }, [agent, agentLoading, router])
 
   async function loadCalls(agentId: string) {
+    if (!agent) return
     setLoading(true)
-    const params = new URLSearchParams({ limit: '200' })
+    const params = new URLSearchParams({ limit: '200', requester_id: agent.id })
     if (agentId) params.set('agent_id', agentId)
     const res = await fetch(`/api/admin/calls?${params}`)
     const data = await res.json()
@@ -329,7 +330,8 @@ export default function AdminCallsPage() {
   }
 
   async function loadVoicemails() {
-    const res = await fetch('/api/admin/recordings')
+    if (!agent) return
+    const res = await fetch(`/api/admin/recordings?agent_id=${agent.id}`)
     const data = await res.json()
     setRecordings(Array.isArray(data) ? data : [])
   }
@@ -344,9 +346,10 @@ export default function AdminCallsPage() {
   }
 
   async function loadCallRecordings(presetIdx: number) {
+    if (!agent) return
     setRecLoading(true)
     const preset = DURATION_PRESETS[presetIdx]
-    const params = new URLSearchParams()
+    const params = new URLSearchParams({ agent_id: agent.id })
     if (preset.min > 0) params.set('min_duration', String(preset.min))
     if (preset.max !== null) params.set('max_duration', String(preset.max))
     const res = await fetch(`/api/admin/call-recordings?${params}`)

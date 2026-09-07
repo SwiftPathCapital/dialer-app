@@ -1,19 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const agentId = searchParams.get('agent_id')
+
   const db = createServerClient()
-  const { data, error } = await db.from('calendar_groups').select('id, name, sort_order').order('sort_order').order('name')
+  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
+
+  let query = db.from('calendar_groups').select('id, name, sort_order').order('sort_order').order('name')
+  if (tenantId) query = query.eq('tenant_id', tenantId)
+
+  const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data ?? [])
 }
 
 export async function POST(req: NextRequest) {
-  const { name } = await req.json()
+  const { name, agent_id } = await req.json()
   if (!name?.trim()) return NextResponse.json({ error: 'name is required' }, { status: 400 })
 
   const db = createServerClient()
-  const { data, error } = await db.from('calendar_groups').insert({ name: name.trim() }).select().single()
+  const tenantId = agent_id ? await getAgentTenantId(db, agent_id) : null
+
+  const { data, error } = await db
+    .from('calendar_groups')
+    .insert({ name: name.trim(), ...(tenantId ? { tenant_id: tenantId } : {}) })
+    .select()
+    .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }

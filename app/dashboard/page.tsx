@@ -102,7 +102,7 @@ export default function DashboardPage() {
     setCallLeadLoading(true)
     const phone = activeCall.remoteNumber.replace(/\D/g, '')
     if (!phone) { setCallLeadLoading(false); return }
-    fetch(`/api/leads?phone=${encodeURIComponent(phone)}&limit=1`)
+    fetch(`/api/leads?phone=${encodeURIComponent(phone)}&limit=1&agent_id=${agent?.id ?? ''}`)
       .then(r => r.json())
       .then(d => setInboundLead(Array.isArray(d) && d.length > 0 ? d[0] : null))
       .catch(() => {})
@@ -116,7 +116,7 @@ export default function DashboardPage() {
     setCallLeadLoading(true)
     const phone = activeCall.remoteNumber.replace(/\D/g, '')
     if (!phone) { setCallLeadLoading(false); return }
-    fetch(`/api/leads?phone=${encodeURIComponent(phone)}&limit=1`)
+    fetch(`/api/leads?phone=${encodeURIComponent(phone)}&limit=1&agent_id=${agent?.id ?? ''}`)
       .then(r => r.json())
       .then(d => setDialedLead(Array.isArray(d) && d.length > 0 ? d[0] : null))
       .catch(() => {})

@@ -1,22 +1,36 @@
-import { NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { NextRequest, NextResponse } from 'next/server'
+import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const agentId = searchParams.get('agent_id')
+
   const db = createServerClient()
+  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
+  let agentsQuery = db.from('agents').select('id, name, email, status').order('name')
+  let activeCallsQuery = db.from('dialer_calls')
+    .select('agent_id, group_id, direction, from_number, to_number, status, started_at, telnyx_call_control_id')
+    .in('status', ['initiated', 'ringing', 'active'])
+    .gte('started_at', new Date(Date.now() - 30 * 60 * 1000).toISOString())
+    .order('started_at', { ascending: false })
+  let todayCallsQuery = db.from('dialer_calls')
+    .select('agent_id, direction, duration_seconds')
+    .gte('started_at', today.toISOString())
+
+  if (tenantId) {
+    agentsQuery = agentsQuery.eq('tenant_id', tenantId)
+    activeCallsQuery = activeCallsQuery.eq('tenant_id', tenantId)
+    todayCallsQuery = todayCallsQuery.eq('tenant_id', tenantId)
+  }
+
   const [agentsRes, activeCallsRes, todayCallsRes, membershipsRes] = await Promise.all([
-    db.from('agents').select('id, name, email, status').order('name'),
-    db.from('dialer_calls')
-      .select('agent_id, group_id, direction, from_number, to_number, status, started_at, telnyx_call_control_id')
-      .in('status', ['initiated', 'ringing', 'active'])
-      .gte('started_at', new Date(Date.now() - 30 * 60 * 1000).toISOString())
-      .order('started_at', { ascending: false }),
-    db.from('dialer_calls')
-      .select('agent_id, direction, duration_seconds')
-      .gte('started_at', today.toISOString()),
+    agentsQuery,
+    activeCallsQuery,
+    todayCallsQuery,
     db.from('inbound_group_members').select('agent_id, group_id'),
   ])
 

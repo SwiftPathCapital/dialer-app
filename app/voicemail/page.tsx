@@ -18,7 +18,7 @@ export default function VoicemailPage() {
     if (agentLoading) return
     if (!agent) { router.push('/login'); return }
 
-    fetch('/api/voicemail')
+    fetch(`/api/voicemail?agent_id=${agent.id}`)
       .then(r => r.json())
       .then(data => { setVoicemails(Array.isArray(data) ? data : []); setLoading(false) })
       .catch(console.error)

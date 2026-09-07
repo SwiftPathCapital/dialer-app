@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -8,6 +8,7 @@ export async function GET(req: NextRequest) {
   const limit = parseInt(searchParams.get('limit') || '50')
 
   const db = createServerClient()
+  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
 
   // Inbound group calls have agent_id=null; include them if the agent is in the group
   let groupIds: string[] = []
@@ -29,6 +30,7 @@ export async function GET(req: NextRequest) {
     .order('started_at', { ascending: false })
     .limit(limit)
 
+  if (tenantId) query = query.eq('tenant_id', tenantId)
   if (dateFrom) query = query.gte('started_at', dateFrom)
   if (dateTo) query = query.lte('started_at', dateTo)
 

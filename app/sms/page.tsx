@@ -18,7 +18,7 @@ export default function SMSPage() {
     if (agentLoading) return
     if (!agent) { router.push('/login'); return }
 
-    fetch('/api/sms')
+    fetch(`/api/sms?agent_id=${agent.id}`)
       .then(r => r.json())
       .then(data => setConversations(Array.isArray(data) ? data : []))
       .catch(console.error)
@@ -26,7 +26,7 @@ export default function SMSPage() {
     const sub = supabase
       .channel('sms-convos')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sms_conversations' }, () => {
-        fetch('/api/sms').then(r => r.json()).then(data => setConversations(Array.isArray(data) ? data : []))
+        fetch(`/api/sms?agent_id=${agent.id}`).then(r => r.json()).then(data => setConversations(Array.isArray(data) ? data : []))
       })
       .subscribe()
 

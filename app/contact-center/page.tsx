@@ -82,11 +82,12 @@ export default function ContactCenterPage() {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const loadThreads = useCallback(() => {
-    fetch('/api/contact-center/threads')
+    if (!agent) return
+    fetch(`/api/contact-center/threads?agent_id=${agent.id}`)
       .then(r => r.json())
       .then(d => { setThreads(Array.isArray(d) ? d : []); setLoading(false) })
       .catch(() => setLoading(false))
-  }, [])
+  }, [agent])
 
   useEffect(() => {
     if (agentLoading) return
@@ -103,12 +104,13 @@ export default function ContactCenterPage() {
   }, [agent, agentLoading, router, loadThreads])
 
   const loadDetail = useCallback((key: string, number: string) => {
+    if (!agent) return
     setDetailLoading(true)
-    fetch(`/api/contact-center/thread?number=${encodeURIComponent(number)}`)
+    fetch(`/api/contact-center/thread?number=${encodeURIComponent(number)}&agent_id=${agent.id}`)
       .then(r => r.json())
       .then(d => { setDetail(d); setDetailLoading(false) })
       .catch(() => setDetailLoading(false))
-  }, [])
+  }, [agent])
 
   useEffect(() => {
     if (!selectedKey) return
@@ -149,6 +151,7 @@ export default function ContactCenterPage() {
           from: fromNumber,
           to: detail.contact_number,
           body: draft.trim(),
+          agent_id: agent?.id,
         }),
       })
       setDraft('')

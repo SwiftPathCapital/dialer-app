@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 
 export async function PATCH(req: NextRequest) {
   const { id, disposition, notes } = await req.json()
@@ -15,9 +15,11 @@ export async function PATCH(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const agentId = searchParams.get('agent_id') || ''
+  const requesterId = searchParams.get('requester_id') || ''
   const limit = parseInt(searchParams.get('limit') || '200')
 
   const db = createServerClient()
+  const tenantId = requesterId ? await getAgentTenantId(db, requesterId) : null
 
   // When filtering by agent, also include inbound group calls for their groups
   let groupIds: string[] = []
@@ -35,6 +37,8 @@ export async function GET(req: NextRequest) {
     .not('telnyx_call_control_id', 'is', null)
     .order('started_at', { ascending: false })
     .limit(limit)
+
+  if (tenantId) query = query.eq('tenant_id', tenantId)
 
   if (agentId && groupIds.length > 0) {
     query = query.or(`agent_id.eq.${agentId},group_id.in.(${groupIds.join(',')})`)
@@ -62,10 +66,12 @@ export async function GET(req: NextRequest) {
   if (uniqueDigits.length > 0) {
     // One query with OR-ILIKE for all numbers in this batch
     const orFilter = uniqueDigits.map(d => `phone.ilike.%${d}%`).join(',')
-    const { data: leads } = await db
+    let leadsQuery = db
       .from('leads')
       .select('id, first_name, last_name, name, company_name, phone')
       .or(orFilter)
+    if (tenantId) leadsQuery = leadsQuery.eq('tenant_id', tenantId)
+    const { data: leads } = await leadsQuery
 
     for (const lead of leads || []) {
       const d = (lead.phone || '').replace(/\D/g, '')

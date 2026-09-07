@@ -28,7 +28,8 @@ export default function AdminGroupsPage() {
   }, [agent, router])
 
   async function loadAgents() {
-    const res = await fetch('/api/agents')
+    if (!agent) return
+    const res = await fetch(`/api/agents?agent_id=${agent.id}`)
     const data = await res.json()
     setAgents(Array.isArray(data) ? data : [])
   }
@@ -39,7 +40,7 @@ export default function AdminGroupsPage() {
     await fetch('/api/agents', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, agent_id: agent?.id }),
     })
     setForm({ name: '', email: '', sip_username: '', sip_password: '', extension: '' })
     setSaving(false)

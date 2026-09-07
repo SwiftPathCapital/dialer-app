@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const agentId = searchParams.get('agent_id')
+
   const db = createServerClient()
+  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
 
-  const { data: vms, error } = await db
+  let vmQuery = db
     .from('voicemails')
     .select('*, dialer_calls(from_number, to_number, agent_id, direction, agents(name))')
     .order('created_at', { ascending: false })
     .limit(200)
+  if (tenantId) vmQuery = vmQuery.eq('tenant_id', tenantId)
 
+  const { data: vms, error } = await vmQuery
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!vms || vms.length === 0) return NextResponse.json([])
 
@@ -20,10 +26,12 @@ export async function GET() {
   let leadsByDigits = new Map<string, { id: string; display: string }>()
   if (uniqueDigits.length > 0) {
     const orFilter = uniqueDigits.map(d => `phone.ilike.%${d}%`).join(',')
-    const { data: leads } = await db
+    let leadsQuery = db
       .from('leads')
       .select('id, first_name, last_name, name, company_name, phone')
       .or(orFilter)
+    if (tenantId) leadsQuery = leadsQuery.eq('tenant_id', tenantId)
+    const { data: leads } = await leadsQuery
     for (const lead of leads || []) {
       const d = (lead.phone || '').replace(/\D/g, '')
       if (!d) continue

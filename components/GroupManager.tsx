@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, Users, Pencil, Check, X } from 'lucide-react'
 import { Agent, InboundGroup } from '@/lib/types'
+import { useSoftphone } from '@/lib/SoftphoneContext'
 
 interface GroupWithMembers extends InboundGroup {
   inbound_group_members: { agent_id: string; agents: Agent }[]
 }
 
 export default function GroupManager() {
+  const { agent: currentAgent } = useSoftphone()
   const [groups, setGroups] = useState<GroupWithMembers[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [selected, setSelected] = useState<GroupWithMembers | null>(null)
@@ -31,9 +33,10 @@ export default function GroupManager() {
   ]
 
   async function load() {
+    if (!currentAgent) return []
     const [g, a] = await Promise.all([
-      fetch('/api/groups').then(r => r.json()),
-      fetch('/api/agents').then(r => r.json()),
+      fetch(`/api/groups?agent_id=${currentAgent.id}`).then(r => r.json()),
+      fetch(`/api/agents?agent_id=${currentAgent.id}`).then(r => r.json()),
     ])
     const loadedGroups: GroupWithMembers[] = Array.isArray(g) ? g : []
     setGroups(loadedGroups)
@@ -42,7 +45,7 @@ export default function GroupManager() {
     return loadedGroups
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [currentAgent])
 
   async function createGroup() {
     if (!newName.trim()) return
@@ -50,7 +53,7 @@ export default function GroupManager() {
     const res = await fetch('/api/groups', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName.trim(), phone_number: newPhone.trim() || null }),
+      body: JSON.stringify({ name: newName.trim(), phone_number: newPhone.trim() || null, agent_id: currentAgent?.id }),
     })
     const created = await res.json()
     setNewName('')

@@ -45,3 +45,14 @@ export function createUserClient(accessToken: string) {
     { global: { headers: { Authorization: `Bearer ${accessToken}` } } }
   )
 }
+
+// Multi-tenant scoping: every table query gets filtered by the requesting agent's own
+// tenant_id, resolved server-side from their agent row rather than trusted from the client.
+// Returns null if the agent doesn't exist (caller should treat that as "no access").
+export async function getAgentTenantId(
+  db: ReturnType<typeof createServerClient>,
+  agentId: string
+): Promise<string | null> {
+  const { data } = await db.from('agents').select('tenant_id').eq('id', agentId).single()
+  return data?.tenant_id ?? null
+}

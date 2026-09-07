@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 import { getTelnyxClient } from '@/lib/telnyx'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const conversationId = searchParams.get('conversation_id')
+  const agentId = searchParams.get('agent_id')
 
   const db = createServerClient()
 
@@ -19,19 +20,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(data)
   }
 
-  const { data, error } = await db
-    .from('sms_conversations')
-    .select('*')
-    .order('last_message_at', { ascending: false })
+  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
+  let query = db.from('sms_conversations').select('*').order('last_message_at', { ascending: false })
+  if (tenantId) query = query.eq('tenant_id', tenantId)
 
+  const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
 
 export async function POST(req: NextRequest) {
-  const { conversation_id, from, to, body } = await req.json()
+  const { conversation_id, from, to, body, agent_id } = await req.json()
 
   const db = createServerClient()
+  const tenantId = agent_id ? await getAgentTenantId(db, agent_id) : null
 
   // Send via Telnyx first — don't create a conversation record for a message that never went out
   const telnyx = await getTelnyxClient()
@@ -45,7 +47,7 @@ export async function POST(req: NextRequest) {
     const { data: convo, error: convoError } = await db
       .from('sms_conversations')
       .upsert(
-        { contact_number: to, our_number: from, last_message_at: new Date().toISOString() },
+        { contact_number: to, our_number: from, last_message_at: new Date().toISOString(), ...(tenantId ? { tenant_id: tenantId } : {}) },
         { onConflict: 'contact_number,our_number' }
       )
       .select()

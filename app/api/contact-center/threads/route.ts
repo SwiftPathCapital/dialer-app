@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { NextRequest, NextResponse } from 'next/server'
+import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 
 function last10(raw: string | null | undefined) {
   return (raw || '').replace(/\D/g, '').slice(-10)
@@ -14,16 +14,27 @@ interface ThreadAcc {
   last_call: { direction: string; status: string; duration_seconds: number | null; at: string } | null
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const agentId = searchParams.get('agent_id')
+
   const db = createServerClient()
+  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
+
+  let convosQuery = db.from('sms_conversations').select('id, contact_number, our_number, last_message_at, tenant_id')
+  let callsQuery = db.from('dialer_calls')
+    .select('id, direction, from_number, to_number, status, duration_seconds, started_at')
+    .not('telnyx_call_control_id', 'is', null)
+    .order('started_at', { ascending: false })
+    .limit(1000)
+  if (tenantId) {
+    convosQuery = convosQuery.eq('tenant_id', tenantId)
+    callsQuery = callsQuery.eq('tenant_id', tenantId)
+  }
 
   const [{ data: convos }, { data: calls }, { data: messages }] = await Promise.all([
-    db.from('sms_conversations').select('id, contact_number, our_number, last_message_at'),
-    db.from('dialer_calls')
-      .select('id, direction, from_number, to_number, status, duration_seconds, started_at')
-      .not('telnyx_call_control_id', 'is', null)
-      .order('started_at', { ascending: false })
-      .limit(1000),
+    convosQuery,
+    callsQuery,
     db.from('sms_messages').select('conversation_id, body, direction, sent_at').order('sent_at', { ascending: false }),
   ])
 
@@ -77,10 +88,12 @@ export async function GET() {
   let leadsByKey = new Map<string, { id: string; display: string }>()
   if (list.length > 0) {
     const orFilter = list.map(t => `phone.ilike.%${t.key}%`).join(',')
-    const { data: leads } = await db
+    let leadsQuery = db
       .from('leads')
       .select('id, first_name, last_name, name, company_name, phone')
       .or(orFilter)
+    if (tenantId) leadsQuery = leadsQuery.eq('tenant_id', tenantId)
+    const { data: leads } = await leadsQuery
 
     for (const lead of leads || []) {
       const k = last10(lead.phone)

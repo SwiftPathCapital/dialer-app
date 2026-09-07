@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const agentId = searchParams.get('agent_id')
   const all = searchParams.get('all') === 'true'
+  const requesterId = searchParams.get('requester_id')
   const status = searchParams.get('status') || 'pending'
   const calendarIdsParam = searchParams.get('calendar_ids')
 
@@ -21,6 +22,11 @@ export async function GET(req: NextRequest) {
     query = query.in('calendar_id', ids)
   } else if (!all && agentId) {
     query = query.eq('agent_id', agentId)
+  } else if (all && requesterId) {
+    // Admin "all agents" view: still scoped to the requesting admin's own tenant.
+    const tenantId = await getAgentTenantId(db, requesterId)
+    if (tenantId) query = query.eq('tenant_id', tenantId)
+    if (agentId) query = query.eq('agent_id', agentId)
   }
 
   const { data, error } = await query
@@ -39,6 +45,7 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerClient()
+  const tenantId = await getAgentTenantId(db, agent_id)
 
   let targetCalendarId: string | null = calendar_id || null
   if (targetCalendarId) {
@@ -73,6 +80,7 @@ export async function POST(req: NextRequest) {
       dialer_call_id: dialer_call_id || null,
       event_type: type,
       calendar_id: targetCalendarId,
+      ...(tenantId ? { tenant_id: tenantId } : {}),
     })
     .select()
     .single()

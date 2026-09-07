@@ -54,10 +54,11 @@ export default function MonitorPage() {
   const [bargeError, setBargeError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    const res = await fetch('/api/admin/monitor')
+    if (!agent) return
+    const res = await fetch(`/api/admin/monitor?agent_id=${agent.id}`)
     const data = await res.json()
     if (Array.isArray(data)) setAgents(data)
-  }, [])
+  }, [agent])
 
   useEffect(() => {
     if (agentLoading) return
