@@ -13,19 +13,22 @@ export async function POST(req: NextRequest) {
 
   const { data: call } = await db
     .from('dialer_calls')
-    .select('id, group_id, agent_id')
+    .select('id, group_id, tenant_id')
     .eq('telnyx_call_control_id', callSid)
     .single()
 
   if (recordingUrl) {
-    await db.from('voicemails').insert({
+    // voicemails has no agent_id column — a direct-line voicemail's agent is looked up via
+    // call_id -> dialer_calls.agent_id (see /api/admin/recordings), same as everywhere else.
+    const { error } = await db.from('voicemails').insert({
       call_id: call?.id ?? null,
       group_id: call?.group_id ?? null,
-      agent_id: call?.agent_id ?? null,
       from_number: from,
       recording_url: recordingUrl,
       listened: false,
+      ...(call?.tenant_id ? { tenant_id: call.tenant_id } : {}),
     })
+    if (error) console.error('[voice/recording] failed to save voicemail:', error.message)
   }
 
   return new NextResponse('', { status: 200 })

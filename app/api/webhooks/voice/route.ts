@@ -39,6 +39,10 @@ async function handle(req: NextRequest) {
   console.log('[voice webhook] toDigits:', toDigits)
 
 // --- 1. Try inbound group match ---
+  // Matched by the real dialed number, which is unique per Telnyx account regardless of
+  // tenant — but once matched, every downstream record (the call row especially) must be
+  // stamped with THAT group's tenant, not left to default to whichever tenant happens to
+  // be first. A wrong tenant_id here would misfile the call and hide it from the right client.
   const { data: allGroups } = await db
     .from('inbound_groups')
     .select('*, inbound_group_members(agent_id)')
@@ -51,6 +55,7 @@ async function handle(req: NextRequest) {
       from_number: from,
       to_number: to,
       group_id: group.id,
+      tenant_id: group.tenant_id,
       status: 'ringing',
       telnyx_call_control_id: callSid,
       started_at: new Date().toISOString(),
@@ -86,7 +91,7 @@ async function handle(req: NextRequest) {
   // --- 2. Try direct agent line (extension or did field) ---
   const { data: allAgents } = await db
     .from('agents')
-    .select('id, sip_username, sip_connection_id, extension, did, status, voicemail_greeting_url')
+    .select('id, sip_username, sip_connection_id, extension, did, status, voicemail_greeting_url, tenant_id')
 
   const directAgent = allAgents?.find(a => {
     const extDigits = a.extension?.replace(/\D/g, '')
@@ -100,6 +105,7 @@ async function handle(req: NextRequest) {
       from_number: from,
       to_number: to,
       agent_id: directAgent.id,
+      tenant_id: directAgent.tenant_id,
       status: 'ringing',
       telnyx_call_control_id: callSid,
       started_at: new Date().toISOString(),
