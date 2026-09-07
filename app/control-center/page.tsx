@@ -19,7 +19,7 @@ interface Orb {
 const ORBS: Orb[] = [
   { key: 'dialer',     label: 'Dialer',      icon: Phone,         href: '/dashboard',    live: true },
   { key: 'contacts',   label: 'Contacts',    icon: Users,         href: '/leads',        live: true },
-  { key: 'comms',      label: 'Comms',       icon: MessageSquare, href: '/sms',          live: true },
+  { key: 'comms',      label: 'Comms',       icon: MessageSquare, href: '/contact-center', live: true },
   { key: 'deals',      label: 'Deals',       icon: Handshake,     href: '/deals',        live: false },
   { key: 'calendar',   label: 'Calendar',    icon: CalendarDays,  href: '/calendar',     live: true },
   { key: 'tasks',      label: 'Tasks',       icon: ListTodo,      href: '/tasks',        live: false },

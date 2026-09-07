@@ -11,7 +11,7 @@ import Tour from '@/components/Tour'
 const NAV = [
   { href: '/control-center', icon: Orbit,     label: 'Control Center', dataTour: '' },
   { href: '/dashboard',  icon: Phone,         label: 'Softphone',  dataTour: 'nav-softphone' },
-  { href: '/sms',        icon: MessageSquare, label: 'SMS',        dataTour: 'nav-sms' },
+  { href: '/contact-center', icon: MessageSquare, label: 'Conversations', dataTour: 'nav-sms' },
   { href: '/voicemail',  icon: Voicemail,     label: 'Voicemail',  dataTour: 'nav-voicemail' },
   { href: '/callbacks',  icon: CalendarClock, label: 'Callbacks',  dataTour: '' },
   { href: '/calls',      icon: List,          label: 'Call Log',   dataTour: '' },
