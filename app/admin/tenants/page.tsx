@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2, Plus, Users, Copy, Check } from 'lucide-react'
+import { Building2, Plus, Users, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 
 interface Tenant {
@@ -11,7 +11,25 @@ interface Tenant {
   slug: string
   created_at: string
   agent_count: number
+  hidden_features: string[]
 }
+
+const TOGGLEABLE_FEATURES = [
+  { href: '/control-center', label: 'Control Center' },
+  { href: '/dashboard', label: 'Softphone' },
+  { href: '/contact-center', label: 'Conversations' },
+  { href: '/voicemail', label: 'Voicemail' },
+  { href: '/callbacks', label: 'Callbacks' },
+  { href: '/calls', label: 'Call Log' },
+  { href: '/admin/monitor', label: 'Admin: Monitor' },
+  { href: '/admin/analytics', label: 'Admin: Analytics' },
+  { href: '/admin/calls', label: 'Admin: Call Center' },
+  { href: '/admin/callbacks', label: 'Admin: Callbacks' },
+  { href: '/admin/calendars', label: 'Admin: Calendars' },
+  { href: '/admin/groups', label: 'Admin: Groups' },
+  { href: '/admin/tags', label: 'Admin: Tags' },
+  { href: '/admin/config', label: 'Admin: Config' },
+]
 
 function randomPassword() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%'
@@ -31,6 +49,8 @@ export default function PlatformTenantsPage() {
   const [error, setError] = useState('')
   const [justCreated, setJustCreated] = useState<{ tenantName: string; email: string; password: string } | null>(null)
   const [copied, setCopied] = useState(false)
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [savingFeatures, setSavingFeatures] = useState<string | null>(null)
 
   const [name, setName] = useState('')
   const [adminName, setAdminName] = useState('')
@@ -81,6 +101,20 @@ export default function PlatformTenantsPage() {
     setAdminPassword(randomPassword())
     setShowForm(false)
     load()
+  }
+
+  async function toggleTenantFeature(tenant: Tenant, featureHref: string) {
+    if (!agent) return
+    const hidden = tenant.hidden_features ?? []
+    const next = hidden.includes(featureHref) ? hidden.filter(f => f !== featureHref) : [...hidden, featureHref]
+    setSavingFeatures(tenant.id)
+    setTenants(prev => prev.map(t => t.id === tenant.id ? { ...t, hidden_features: next } : t))
+    await fetch('/api/platform/tenants', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: agent.id, tenant_id: tenant.id, hidden_features: next }),
+    }).catch(() => {})
+    setSavingFeatures(null)
   }
 
   function copyCreds() {
@@ -185,22 +219,62 @@ export default function PlatformTenantsPage() {
         <p className="text-gray-600 text-sm">No clients yet.</p>
       ) : (
         <div className="space-y-2">
-          {tenants.map(t => (
-            <div key={t.id} className="bg-gray-800 rounded-xl border border-gray-700 px-4 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-cyan-950/50 border border-cyan-700/40 flex items-center justify-center shrink-0">
-                  <Building2 className="w-4 h-4 text-cyan-400" />
-                </div>
-                <div>
-                  <p className="text-white text-sm font-medium">{t.name}</p>
-                  <p className="text-gray-500 text-xs">{t.slug}</p>
-                </div>
+          {tenants.map(t => {
+            const isOpen = expanded === t.id
+            return (
+              <div key={t.id} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                <button
+                  onClick={() => setExpanded(isOpen ? null : t.id)}
+                  className="w-full px-4 py-3 flex items-center justify-between text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-cyan-950/50 border border-cyan-700/40 flex items-center justify-center shrink-0">
+                      <Building2 className="w-4 h-4 text-cyan-400" />
+                    </div>
+                    <div>
+                      <p className="text-white text-sm font-medium">{t.name}</p>
+                      <p className="text-gray-500 text-xs">{t.slug}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5 text-gray-400 text-xs">
+                      <Users className="w-3.5 h-3.5" /> {t.agent_count}
+                    </div>
+                    {isOpen ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
+                  </div>
+                </button>
+
+                {isOpen && (
+                  <div className="px-4 pb-4 border-t border-gray-700 pt-3">
+                    <p className="text-gray-500 text-xs uppercase tracking-widest mb-2">
+                      Visible Features {savingFeatures === t.id && <span className="text-gray-600 normal-case">saving…</span>}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {TOGGLEABLE_FEATURES.map(f => {
+                        const hidden = (t.hidden_features ?? []).includes(f.href)
+                        return (
+                          <button
+                            key={f.href}
+                            onClick={() => toggleTenantFeature(t, f.href)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                              hidden
+                                ? 'bg-gray-900 border-gray-700 text-gray-500'
+                                : 'bg-cyan-600 border-cyan-500 text-white'
+                            }`}
+                          >
+                            {f.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <p className="text-gray-600 text-xs mt-2">
+                      Hidden here is hidden for every agent in {t.name}, regardless of their individual permissions.
+                    </p>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-1.5 text-gray-400 text-xs">
-                <Users className="w-3.5 h-3.5" /> {t.agent_count}
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

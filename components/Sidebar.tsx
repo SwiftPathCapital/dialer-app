@@ -115,6 +115,10 @@ export default function Sidebar() {
     setAgent(null)
   }
 
+  // Tenant-level hides are a baseline every agent in that tenant inherits, on top of
+  // whatever an admin has hidden for that specific agent.
+  const hiddenFeatures = [...(agent?.hidden_features ?? []), ...(agent?.tenant_hidden_features ?? [])]
+
   const initials = agent?.name?.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() ?? '?'
   const statusRing = agent?.status === 'available' ? 'ring-green-400/60 shadow-[0_0_16px_rgba(74,222,128,0.5)]'
     : agent?.status === 'busy' ? 'ring-yellow-400/60 shadow-[0_0_16px_rgba(250,204,21,0.5)]'
@@ -140,7 +144,7 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="relative flex-1 py-4 px-2 flex flex-col gap-0.5 overflow-y-auto">
-        {NAV.filter(({ href }) => !agent?.hidden_features?.includes(href)).map(({ href, icon: Icon, label, dataTour }) => {
+        {NAV.filter(({ href }) => !hiddenFeatures.includes(href)).map(({ href, icon: Icon, label, dataTour }) => {
           const active = pathname === href
           const badge = href === '/voicemail' && unreadVoicemails > 0 ? unreadVoicemails : 0
           return (
@@ -171,7 +175,7 @@ export default function Sidebar() {
         {agent?.role === 'admin' && (
           <div className="mt-auto pt-4 border-t border-cyan-500/10 space-y-0.5">
             <p className="hidden md:block text-transparent bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-xs uppercase tracking-widest px-3 pb-1 font-semibold">Admin</p>
-            {ADMIN_NAV.map(({ href, icon: Icon, label, dataTour }) => {
+            {ADMIN_NAV.filter(({ href }) => !agent?.tenant_hidden_features?.includes(href)).map(({ href, icon: Icon, label, dataTour }) => {
               const active = pathname.startsWith(href)
               return (
                 <Link

@@ -29,18 +29,20 @@ export default function LoginPage() {
     }
 
     // Fetch the agents row to get SIP credentials and name
-    const { data: agent, error: agentError } = await supabase
+    const { data: agentRow, error: agentError } = await supabase
       .from('agents')
-      .select('id, name, email, sip_username, sip_password, extension, did, status, role, voicemail_greeting_url, can_view_all_leads, hidden_features, is_platform_admin, tenant_id, updated_at')
+      .select('id, name, email, sip_username, sip_password, extension, did, status, role, voicemail_greeting_url, can_view_all_leads, hidden_features, is_platform_admin, tenant_id, updated_at, tenants(hidden_features)')
       .eq('id', authData.user.id)
-      .single() as { data: Agent | null; error: unknown }
+      .single() as { data: (Agent & { tenants: { hidden_features: string[] } | null }) | null; error: unknown }
 
-    if (agentError || !agent) {
+    if (agentError || !agentRow) {
       setError('Account exists but no agent profile found. Contact your admin.')
       setLoading(false)
       return
     }
 
+    const { tenants, ...rest } = agentRow
+    const agent: Agent = { ...rest, tenant_hidden_features: tenants?.hidden_features ?? [] }
     setAgent(agent)
     // Set HttpOnly session cookies so middleware can protect routes
     await fetch('/api/auth/session', {

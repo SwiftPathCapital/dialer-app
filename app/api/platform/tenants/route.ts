@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
 
   const { data: tenants, error } = await db
     .from('tenants')
-    .select('id, name, slug, created_at')
+    .select('id, name, slug, created_at, hidden_features')
     .order('created_at', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -96,4 +96,20 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ tenant, admin: newAgent })
+}
+
+export async function PATCH(req: NextRequest) {
+  const { agent_id, tenant_id, hidden_features } = await req.json()
+
+  const db = createServerClient()
+  if (!(await requirePlatformAdmin(db, agent_id))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  if (!tenant_id || !Array.isArray(hidden_features)) {
+    return NextResponse.json({ error: 'tenant_id and hidden_features are required' }, { status: 400 })
+  }
+
+  const { error } = await db.from('tenants').update({ hidden_features }).eq('id', tenant_id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
 }

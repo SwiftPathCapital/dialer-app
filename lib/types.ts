@@ -15,6 +15,7 @@ export interface Agent {
   hidden_features: string[]
   is_platform_admin: boolean
   tenant_id: string
+  tenant_hidden_features: string[]
   updated_at: string
 }
 
