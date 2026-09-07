@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
 
   let query = db
     .from('agents')
-    .select('id, name, email, sip_username, sip_password, extension, did, status, voicemail_greeting_url, can_view_all_leads, hidden_features, updated_at')
+    .select('id, name, email, sip_username, sip_password, extension, did, status, voicemail_greeting_url, can_view_all_leads, hidden_features, is_platform_admin, tenant_id, updated_at')
     .order('name')
   if (tenantId) query = query.eq('tenant_id', tenantId)
 

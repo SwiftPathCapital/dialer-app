@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock, CalendarDays, List, Tag, Orbit, Sparkles } from 'lucide-react'
+import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock, CalendarDays, List, Tag, Orbit, Sparkles, Building2 } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import { supabase } from '@/lib/supabase'
 import Tour from '@/components/Tour'
@@ -189,6 +189,29 @@ export default function Sidebar() {
                 </Link>
               )
             })}
+          </div>
+        )}
+
+        {/* Platform section — only visible to the platform admin (manages all tenants) */}
+        {agent?.is_platform_admin && (
+          <div className="pt-4 space-y-0.5">
+            <p className="hidden md:block text-transparent bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-xs uppercase tracking-widest px-3 pb-1 font-semibold">Platform</p>
+            {(() => {
+              const active = pathname.startsWith('/admin/tenants')
+              return (
+                <Link
+                  href="/admin/tenants"
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                    active
+                      ? 'bg-gradient-to-r from-cyan-600/80 to-blue-600/70 text-white shadow-[0_0_18px_rgba(34,211,238,0.35)] border border-cyan-400/30'
+                      : 'text-gray-400 hover:text-cyan-100 hover:bg-cyan-500/10 border border-transparent'
+                  }`}
+                >
+                  <Building2 className="w-5 h-5 shrink-0" />
+                  <span className="hidden md:block">Clients</span>
+                </Link>
+              )
+            })()}
           </div>
         )}
       </nav>

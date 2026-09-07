@@ -13,6 +13,8 @@ export interface Agent {
   voicemail_greeting_url: string | null
   can_view_all_leads: boolean
   hidden_features: string[]
+  is_platform_admin: boolean
+  tenant_id: string
   updated_at: string
 }
 
