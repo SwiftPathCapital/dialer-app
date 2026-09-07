@@ -224,7 +224,7 @@ export default function ConfigPage() {
     const res = await fetch('/api/admin/agents/password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentId, password }),
+      body: JSON.stringify({ agentId, password, admin_agent_id: agent?.id }),
     })
     const data = await res.json()
     setPwSaving(prev => ({ ...prev, [agentId]: false }))

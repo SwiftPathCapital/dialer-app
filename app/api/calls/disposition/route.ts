@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 
 export async function POST(req: NextRequest) {
   const { lead_phone, lead_id, agent_id, disposition, notes } = await req.json()
   const db = createServerClient()
+  const tenantId = agent_id ? await getAgentTenantId(db, agent_id) : null
 
   const digits = lead_phone.replace(/\D/g, '')
 
@@ -89,7 +90,9 @@ export async function POST(req: NextRequest) {
   } else if (lead_phone) {
     const d = (lead_phone || '').replace(/\D/g, '')
     if (d.length >= 7) {
-      await db.from('leads').update({ last_called_at: new Date().toISOString() }).ilike('phone', `%${d}%`)
+      let updateQuery = db.from('leads').update({ last_called_at: new Date().toISOString() }).ilike('phone', `%${d}%`)
+      if (tenantId) updateQuery = updateQuery.eq('tenant_id', tenantId)
+      await updateQuery
     }
   }
 

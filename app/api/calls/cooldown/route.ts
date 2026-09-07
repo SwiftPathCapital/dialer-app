@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 
 /**
  * GET /api/calls/cooldown?phone=<digits>
@@ -17,14 +17,18 @@ export async function GET(req: NextRequest) {
   const db = createServerClient()
   const eightHoursAgo = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString()
 
-  const { data: lead } = await db
+  const agentId = req.nextUrl.searchParams.get('agent_id')
+  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
+
+  let leadQuery = db
     .from('leads')
     .select('id, last_called_at')
     .ilike('phone', `%${digits}%`)
     .not('last_called_at', 'is', null)
     .gt('last_called_at', eightHoursAgo)
     .limit(1)
-    .maybeSingle()
+  if (tenantId) leadQuery = leadQuery.eq('tenant_id', tenantId)
+  const { data: lead } = await leadQuery.maybeSingle()
 
   if (!lead?.last_called_at) return NextResponse.json({ blocked: false })
 

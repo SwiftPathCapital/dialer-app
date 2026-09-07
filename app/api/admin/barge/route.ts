@@ -8,19 +8,31 @@ export async function POST(req: NextRequest) {
 
   const db = createServerClient()
 
-  const [apiKeyRes, connIdRes, groupRes, appUrlRes, callRes] = await Promise.all([
+  // Look up the target call first so the dial-from number is scoped to its own tenant —
+  // otherwise this would always grab whichever inbound group's number happens to sort
+  // first, which is wrong once a second tenant with its own numbers exists.
+  const { data: callRow } = await db
+    .from('dialer_calls')
+    .select('agent_call_leg_id, tenant_id')
+    .eq('telnyx_call_control_id', call_control_id)
+    .maybeSingle()
+  const agentCallLegId = callRow?.agent_call_leg_id || null
+  const callTenantId = callRow?.tenant_id || null
+
+  let groupQuery = db.from('inbound_groups').select('phone_number').not('phone_number', 'is', null).limit(1)
+  if (callTenantId) groupQuery = groupQuery.eq('tenant_id', callTenantId)
+
+  const [apiKeyRes, connIdRes, groupRes, appUrlRes] = await Promise.all([
     db.from('app_config').select('value').eq('key', 'telnyx_api_key').single(),
     db.from('app_config').select('value').eq('key', 'telnyx_sip_connection_id').single(),
-    db.from('inbound_groups').select('phone_number').not('phone_number', 'is', null).limit(1).single(),
+    groupQuery.maybeSingle(),
     db.from('app_config').select('value').eq('key', 'app_url').single(),
-    db.from('dialer_calls').select('agent_call_leg_id').eq('telnyx_call_control_id', call_control_id).maybeSingle(),
   ])
 
   const apiKey = apiKeyRes.data?.value
   const connectionId = connIdRes.data?.value
   const fromNumber = groupRes.data?.phone_number
   const appUrl = appUrlRes.data?.value || process.env.NEXT_PUBLIC_APP_URL || ''
-  const agentCallLegId = callRes.data?.agent_call_leg_id || null
 
   if (!apiKey) return NextResponse.json({ error: 'Telnyx API key not configured in Admin → Config.' }, { status: 500 })
   if (!connectionId) return NextResponse.json({ error: 'Call Control App ID not configured in Admin → Config.' }, { status: 500 })

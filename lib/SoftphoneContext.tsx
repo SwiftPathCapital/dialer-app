@@ -263,7 +263,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
             // Caller-ID lookup for waiting call
             const digits = remoteNumber.replace(/\D/g, '')
             if (digits) {
-              fetch(`/api/caller-id?phone=${encodeURIComponent(digits)}`)
+              fetch(`/api/caller-id?phone=${encodeURIComponent(digits)}${agent?.id ? `&agent_id=${agent.id}` : ''}`)
                 .then(r => r.json())
                 .then((d: { name?: string | null }) => {
                   if (d.name) setWaitingCall(prev => prev ? { ...prev, callerName: d.name! } : null)
@@ -294,7 +294,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
 
           const lookupDigits = remoteNumber.replace(/\D/g, '')
           if (lookupDigits) {
-            fetch(`/api/caller-id?phone=${encodeURIComponent(lookupDigits)}`)
+            fetch(`/api/caller-id?phone=${encodeURIComponent(lookupDigits)}${agent?.id ? `&agent_id=${agent.id}` : ''}`)
               .then(r => r.json())
               .then((d: { name?: string | null }) => {
                 if (d.name) setActiveCall(prev => prev ? { ...prev, callerName: d.name! } : null)
@@ -643,7 +643,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     const digits = number.replace(/\D/g, '')
     if (digits.length >= 7 && !opts?.bypassCooldown) {
       try {
-        const res = await fetch(`/api/calls/cooldown?phone=${digits}`)
+        const res = await fetch(`/api/calls/cooldown?phone=${digits}${agent?.id ? `&agent_id=${agent.id}` : ''}`)
         if (res.ok) {
           const check = await res.json()
           if (check.blocked) {

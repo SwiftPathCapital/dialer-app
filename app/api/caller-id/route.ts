@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 
 export async function GET(req: NextRequest) {
   const phone = req.nextUrl.searchParams.get('phone') || ''
@@ -8,12 +8,17 @@ export async function GET(req: NextRequest) {
   const db = createServerClient()
   const digits = phone.replace(/\D/g, '')
 
+  const agentId = req.nextUrl.searchParams.get('agent_id')
+  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
+
   // 1. Check our own leads table first — free and fast
-  const { data: leads } = await db
+  let leadsQuery = db
     .from('leads')
     .select('first_name, last_name, company_name, name')
     .ilike('phone', `%${digits.slice(-10)}%`)
     .limit(1)
+  if (tenantId) leadsQuery = leadsQuery.eq('tenant_id', tenantId)
+  const { data: leads } = await leadsQuery
 
   if (leads && leads.length > 0) {
     const l = leads[0]
