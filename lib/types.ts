@@ -108,3 +108,48 @@ export interface SMSMessage {
   telnyx_message_id: string | null
   sent_at: string
 }
+
+export interface MoistureShape {
+  id: string
+  kind: 'room' | 'wall' | 'hallway'
+  x: number // percentage of canvas width
+  y: number // percentage of canvas height
+  width: number // percentage of canvas width
+  height: number // percentage of canvas height
+  rotation: number // degrees
+  label: string
+}
+
+export interface MoistureProject {
+  id: string
+  lead_id: string
+  name: string
+  status: 'in_progress' | 'completed'
+  floor_plan_type: 'image' | 'drawn' | null
+  floor_plan_image_url: string | null
+  floor_plan_shapes: MoistureShape[]
+  created_at: string
+  updated_at: string
+  // present on list responses only
+  lead?: { id: string; name: string | null; first_name: string | null; last_name: string | null; company_name: string | null; phone: string | null }
+  reading_point_count?: number
+}
+
+export interface MoistureReadingPoint {
+  id: string
+  project_id: string
+  x: number
+  y: number
+  label: string | null
+  created_at: string
+  latest_reading?: MoistureReading | null
+}
+
+export interface MoistureReading {
+  id: string
+  point_id: string
+  moisture_level: number
+  notes: string | null
+  recorded_by: string | null
+  recorded_at: string
+}

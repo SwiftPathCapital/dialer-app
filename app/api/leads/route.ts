@@ -44,6 +44,13 @@ export async function GET(req: NextRequest) {
 
   if (phone) {
     query = query.ilike('phone', `%${phone}%`)
+  } else if (search) {
+    // A plain contact search (e.g. picking an existing customer for a new moisture
+    // mapping project) — intentionally skips the dialer-queue-eligibility filters
+    // below (DNC, cooldown, assignment, enabled sources) since those describe "who's
+    // next to call," not "does this contact exist." A DNC'd or already-called contact
+    // should still be findable by name/phone.
+    query = query.or(`company_name.ilike.%${search}%,name.ilike.%${search}%,phone.ilike.%${search}%`)
   } else {
     if (agentId) {
       // Agents with can_view_all_leads see the full pool; others only their
@@ -75,9 +82,6 @@ export async function GET(req: NextRequest) {
 
       // Permanently exclude leads that should never be called again
       query = query.not('status', 'in', '("DNC","Not Interested","Wrong Number","App Received","Docs Received","Pending App & Docs","Deal Funded")')
-    }
-    if (search) {
-      query = query.or(`company_name.ilike.%${search}%,name.ilike.%${search}%,phone.ilike.%${search}%`)
     }
   }
 
