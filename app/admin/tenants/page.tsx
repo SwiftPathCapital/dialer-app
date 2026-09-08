@@ -17,6 +17,7 @@ interface Tenant {
 const TOGGLEABLE_FEATURES = [
   { href: '/control-center', label: 'Control Center' },
   { href: '/dashboard', label: 'Softphone' },
+  { href: '/leads', label: 'Leads' },
   { href: '/contact-center', label: 'Conversations' },
   { href: '/voicemail', label: 'Voicemail' },
   { href: '/callbacks', label: 'Callbacks' },
