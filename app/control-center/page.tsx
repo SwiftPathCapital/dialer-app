@@ -164,6 +164,12 @@ export default function ControlCenterPage() {
       </div>
 
       <div className="relative z-10 text-center mb-6">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/apex-logo.webp"
+          alt="Apex"
+          className="w-32 h-32 mx-auto -mb-2 drop-shadow-[0_0_28px_rgba(168,85,247,0.55)]"
+        />
         <p className="text-cyan-500/70 text-xs uppercase tracking-[0.3em]">Control Center</p>
         <h1 className="text-white text-2xl font-bold mt-1">Welcome, {agent.name}</h1>
       </div>
