@@ -144,7 +144,8 @@ export default function LeadsPage() {
                 ) : phone ? (
                   <button
                     onClick={() => dial(phone)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-green-700 hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors shrink-0"
+                    className="neon-sweep flex items-center gap-1.5 px-3 py-1.5 bg-green-700 hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors shrink-0"
+                    style={{ '--glow-color': '#22c55e' } as React.CSSProperties}
                   >
                     <Phone className="w-3.5 h-3.5" />
                     Call

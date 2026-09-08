@@ -214,7 +214,8 @@ function EditableCall({ call, onSaved }: { call: CallRow; onSaved: () => void })
             <button
               onClick={save}
               disabled={saving}
-              className="px-4 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium transition-colors"
+              className={`px-4 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium transition-colors ${!saving ? 'neon-pulse' : ''}`}
+              style={{ '--glow-color': '#3b82f6' } as React.CSSProperties}
             >
               {saving ? 'Saving…' : 'Save'}
             </button>

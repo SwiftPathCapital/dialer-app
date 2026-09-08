@@ -17,5 +17,5 @@ export default function ReputationPage() {
 
   if (!agent) return null
 
-  return <ComingSoon icon={Star} title="Reputation" description="Monitor and respond to reviews across Google and other platforms." />
+  return <ComingSoon icon={Star} title="Reputation" description="Monitor and respond to reviews across Google and other platforms." glowColor="#fbbf24" />
 }

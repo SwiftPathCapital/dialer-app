@@ -17,5 +17,5 @@ export default function SocialPage() {
 
   if (!agent) return null
 
-  return <ComingSoon icon={Share2} title="Social" description="Schedule and publish posts across your social accounts." />
+  return <ComingSoon icon={Share2} title="Social" description="Schedule and publish posts across your social accounts." glowColor="#f472b6" />
 }

@@ -170,7 +170,10 @@ export default function MonitorPage() {
                   <button
                     onClick={() => bargeCall(a)}
                     disabled={barging === a.id}
-                    className="mt-1 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white text-xs font-medium transition-colors"
+                    className={`mt-1 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white text-xs font-medium transition-colors ${
+                      barging !== a.id ? 'neon-pulse' : ''
+                    }`}
+                    style={{ '--glow-color': '#a855f7' } as React.CSSProperties}
                   >
                     <Headphones className="w-3.5 h-3.5" />
                     {barging === a.id ? 'Connecting…' : 'Monitor'}

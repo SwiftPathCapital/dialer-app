@@ -76,7 +76,10 @@ export default function TagsPage() {
           <button
             type="submit"
             disabled={saving || !name.trim()}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors shrink-0"
+            className={`flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors shrink-0 ${
+              !saving && name.trim() ? 'neon-flicker' : ''
+            }`}
+            style={{ '--glow-color': '#3b82f6' } as React.CSSProperties}
           >
             <Plus className="w-4 h-4" /> Add
           </button>

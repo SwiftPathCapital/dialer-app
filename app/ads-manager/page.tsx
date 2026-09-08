@@ -17,5 +17,5 @@ export default function AdsManagerPage() {
 
   if (!agent) return null
 
-  return <ComingSoon icon={Megaphone} title="Ads Manager" description="Manage ad campaigns and track spend without leaving the dashboard." />
+  return <ComingSoon icon={Megaphone} title="Ads Manager" description="Manage ad campaigns and track spend without leaving the dashboard." glowColor="#fb923c" />
 }

@@ -386,7 +386,10 @@ export default function ConfigPage() {
                   <button
                     onClick={() => saveSection(section.fields.map(f => f.key))}
                     disabled={isSaving || !hasChanges}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+                    className={`flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors ${
+                      !isSaving && hasChanges ? 'neon-pulse' : ''
+                    }`}
+                    style={{ '--glow-color': '#3b82f6' } as React.CSSProperties}
                   >
                     {isSaving ? (
                       <><RefreshCw className="w-4 h-4 animate-spin" /> Saving...</>

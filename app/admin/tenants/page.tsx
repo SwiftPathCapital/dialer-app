@@ -135,7 +135,8 @@ export default function PlatformTenantsPage() {
         </div>
         <button
           onClick={() => { setShowForm(v => !v); setJustCreated(null); setError('') }}
-          className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium rounded-lg transition-colors"
+          className="neon-orbit flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium rounded-lg transition-colors"
+          style={{ '--glow-color': '#22d3ee', '--glow-color-2': '#818cf8' } as React.CSSProperties}
         >
           <Plus className="w-4 h-4" /> New Client
         </button>
@@ -206,7 +207,10 @@ export default function PlatformTenantsPage() {
           <button
             type="submit"
             disabled={saving || !name.trim() || !adminName.trim() || !adminEmail.trim() || !adminPassword.trim()}
-            className="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-purple-600 hover:opacity-90 disabled:opacity-40 text-white font-semibold text-sm rounded-lg transition-opacity"
+            className={`w-full py-2.5 bg-gradient-to-r from-cyan-600 to-purple-600 hover:opacity-90 disabled:opacity-40 text-white font-semibold text-sm rounded-lg transition-opacity ${
+              !saving && name.trim() && adminName.trim() && adminEmail.trim() && adminPassword.trim() ? 'neon-orbit' : ''
+            }`}
+            style={{ '--glow-color': '#22d3ee', '--glow-color-2': '#a78bfa' } as React.CSSProperties}
           >
             {saving ? 'Creating…' : 'Create Client'}
           </button>

@@ -17,5 +17,5 @@ export default function DealsPage() {
 
   if (!agent) return null
 
-  return <ComingSoon icon={Handshake} title="Deals" description="Track active deals through your pipeline, stage by stage." />
+  return <ComingSoon icon={Handshake} title="Deals" description="Track active deals through your pipeline, stage by stage." glowColor="#22d3ee" />
 }

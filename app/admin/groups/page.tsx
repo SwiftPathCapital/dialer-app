@@ -210,7 +210,10 @@ export default function AdminGroupsPage() {
             <button
               onClick={createAgent}
               disabled={!form.name || !form.email || saving}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors"
+              className={`flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors ${
+                form.name && form.email && !saving ? 'neon-sweep' : ''
+              }`}
+              style={{ '--glow-color': '#3b82f6' } as React.CSSProperties}
             >
               <Plus className="w-4 h-4" />
               Add Agent

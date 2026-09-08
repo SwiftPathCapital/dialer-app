@@ -134,8 +134,9 @@ export default function CallLogPage() {
             key={r.label}
             onClick={() => switchRange(i)}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              rangeIdx === i ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+              rangeIdx === i ? 'neon-chase bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
             }`}
+            style={rangeIdx === i ? ({ '--glow-color': '#3b82f6' } as React.CSSProperties) : undefined}
           >
             {r.label}
           </button>

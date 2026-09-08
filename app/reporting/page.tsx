@@ -17,5 +17,5 @@ export default function ReportingPage() {
 
   if (!agent) return null
 
-  return <ComingSoon icon={BarChart3} title="Reporting" description="Cross-channel performance reporting for calls, texts, and deals." />
+  return <ComingSoon icon={BarChart3} title="Reporting" description="Cross-channel performance reporting for calls, texts, and deals." glowColor="#a78bfa" />
 }

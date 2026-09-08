@@ -638,7 +638,10 @@ export default function CalendarPage() {
             <button
               type="submit"
               disabled={saving || (newForm.type !== 'task' && !newForm.phone.trim())}
-              className="w-full mt-4 py-2.5 bg-gradient-to-r from-cyan-600 to-purple-600 hover:opacity-90 disabled:opacity-40 text-white font-semibold text-sm rounded-lg transition-opacity"
+              className={`w-full mt-4 py-2.5 bg-gradient-to-r from-cyan-600 to-purple-600 hover:opacity-90 disabled:opacity-40 text-white font-semibold text-sm rounded-lg transition-opacity ${
+                !saving && (newForm.type === 'task' || newForm.phone.trim()) ? 'neon-orbit' : ''
+              }`}
+              style={{ '--glow-color': '#22d3ee', '--glow-color-2': '#a78bfa' } as React.CSSProperties}
             >
               {saving ? 'Saving…' : `Schedule ${typeMeta(newForm.type).label}`}
             </button>

@@ -231,9 +231,12 @@ export default function ControlCenterPage() {
         })}
       </div>
 
-      {/* Ask bar */}
+      {/* Ask bar — Control Center's signature is chase, matching the orbit motif */}
       <form onSubmit={submitAsk} className="relative z-10 w-full max-w-md mt-8">
-        <div className="flex items-center gap-2 bg-gray-900/70 border border-cyan-500/20 rounded-full px-4 py-2.5 backdrop-blur-sm">
+        <div
+          className="neon-chase flex items-center gap-2 bg-gray-900/70 border border-cyan-500/20 rounded-full px-4 py-2.5 backdrop-blur-sm"
+          style={{ '--glow-color': '#22d3ee' } as React.CSSProperties}
+        >
           <Sparkles className="w-4 h-4 text-cyan-500 shrink-0" />
           <input
             value={askValue}

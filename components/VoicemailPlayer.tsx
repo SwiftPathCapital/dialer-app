@@ -89,7 +89,8 @@ export default function VoicemailPlayer({ voicemail, onListened, onDelete }: Pro
       <div className="flex items-center gap-3">
         <button
           onClick={toggle}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-blue-600 hover:bg-blue-500 text-white transition-colors shrink-0"
+          className="neon-breathe w-9 h-9 flex items-center justify-center rounded-full bg-blue-600 hover:bg-blue-500 text-white transition-colors shrink-0"
+          style={{ '--glow-color': '#a78bfa' } as React.CSSProperties}
         >
           {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
         </button>

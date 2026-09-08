@@ -164,7 +164,8 @@ function CallbackCard({ cb, onDone, onDelete, onCall, activeCall }: {
           <button
             onClick={() => onCall(cb.lead_phone)}
             disabled={activeCall}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white text-xs rounded-lg transition-colors"
+            className={`flex items-center gap-1.5 px-3 py-1.5 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white text-xs rounded-lg transition-colors ${!activeCall ? 'neon-flicker' : ''}`}
+            style={{ '--glow-color': '#fbbf24' } as React.CSSProperties}
           >
             <Phone className="w-3 h-3" /> Call Now
           </button>

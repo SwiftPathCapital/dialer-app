@@ -68,16 +68,139 @@ body {
   will-change: box-shadow;
 }
 
+/* ── Signature glow patterns ──────────────────────────────────────────────
+   Each page/section picks one of these for its primary buttons, so the app
+   reads as one consistent neon language while still feeling distinct place
+   to place. All read --glow-color (and --glow-color-2 for .neon-orbit) from
+   inline style, same convention as .neon-pulse above. */
+
+/* Sweep: a bright band slides across the glow, like a light passing behind it */
+@keyframes neon-sweep-glow {
+  0%   { box-shadow: -10px 0 14px -2px var(--glow-color), 0 0 3px 0 var(--glow-color) inset; }
+  50%  { box-shadow: 10px 0 18px 0px var(--glow-color), 0 0 6px 1px var(--glow-color) inset; }
+  100% { box-shadow: -10px 0 14px -2px var(--glow-color), 0 0 3px 0 var(--glow-color) inset; }
+}
+.neon-sweep {
+  animation: neon-sweep-glow 2.8s ease-in-out infinite;
+  will-change: box-shadow;
+}
+
+/* Chase: the glow orbits the element's perimeter rather than pulsing in place */
+@keyframes neon-chase-glow {
+  0%   { box-shadow: 0 -8px 14px -3px var(--glow-color), 0 0 4px 0 var(--glow-color) inset; }
+  25%  { box-shadow: 8px 0 14px -3px var(--glow-color), 0 0 4px 0 var(--glow-color) inset; }
+  50%  { box-shadow: 0 8px 14px -3px var(--glow-color), 0 0 4px 0 var(--glow-color) inset; }
+  75%  { box-shadow: -8px 0 14px -3px var(--glow-color), 0 0 4px 0 var(--glow-color) inset; }
+  100% { box-shadow: 0 -8px 14px -3px var(--glow-color), 0 0 4px 0 var(--glow-color) inset; }
+}
+.neon-chase {
+  animation: neon-chase-glow 3.2s linear infinite;
+  will-change: box-shadow;
+}
+
+/* Flicker: irregular neon-sign style flicker rather than a smooth pulse */
+@keyframes neon-flicker-glow {
+  0%, 100% { box-shadow: 0 0 16px 3px var(--glow-color), 0 0 5px 1px var(--glow-color) inset; }
+  8%       { box-shadow: 0 0 4px 0px var(--glow-color), 0 0 1px 0 var(--glow-color) inset; }
+  10%      { box-shadow: 0 0 16px 3px var(--glow-color), 0 0 5px 1px var(--glow-color) inset; }
+  28%      { box-shadow: 0 0 6px 0px var(--glow-color), 0 0 2px 0 var(--glow-color) inset; }
+  30%      { box-shadow: 0 0 18px 4px var(--glow-color), 0 0 6px 1px var(--glow-color) inset; }
+  62%      { box-shadow: 0 0 16px 3px var(--glow-color), 0 0 5px 1px var(--glow-color) inset; }
+  64%      { box-shadow: 0 0 3px 0px var(--glow-color), 0 0 1px 0 var(--glow-color) inset; }
+  66%      { box-shadow: 0 0 16px 3px var(--glow-color), 0 0 5px 1px var(--glow-color) inset; }
+}
+.neon-flicker {
+  animation: neon-flicker-glow 3.6s ease-in-out infinite;
+  will-change: box-shadow;
+}
+
+/* Breathe: slow, wide, calm swell — the softest of the set */
+@keyframes neon-breathe-glow {
+  0%, 100% { box-shadow: 0 0 6px 0px var(--glow-color), 0 0 2px 0 var(--glow-color) inset; }
+  50%      { box-shadow: 0 0 26px 6px var(--glow-color), 0 0 10px 2px var(--glow-color) inset; }
+}
+.neon-breathe {
+  animation: neon-breathe-glow 4.8s ease-in-out infinite;
+  will-change: box-shadow;
+}
+
+/* Orbit: alternates between two colors rather than one, like a binary star */
+@keyframes neon-orbit-glow {
+  0%, 100% { box-shadow: 0 0 16px 3px var(--glow-color), 0 0 5px 1px var(--glow-color) inset; }
+  50%      { box-shadow: 0 0 16px 3px var(--glow-color-2, var(--glow-color)), 0 0 5px 1px var(--glow-color-2, var(--glow-color)) inset; }
+}
+.neon-orbit {
+  animation: neon-orbit-glow 3.4s ease-in-out infinite;
+  will-change: box-shadow;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .orbit-ring-slow,
   .orbit-ring-slow-reverse,
   .orbit-core-glow,
   .orbit-drift-wrap,
-  .neon-pulse {
+  .neon-pulse,
+  .neon-sweep,
+  .neon-chase,
+  .neon-flicker,
+  .neon-breathe,
+  .neon-orbit {
     animation: none !important;
   }
 
-  .neon-pulse {
+  .neon-pulse,
+  .neon-sweep,
+  .neon-chase,
+  .neon-flicker,
+  .neon-breathe,
+  .neon-orbit {
     box-shadow: 0 0 8px 1px var(--glow-color);
   }
+}
+
+/* ── Backdrop crossfade (Part 3: alternating page backdrop images) ───────── */
+@keyframes backdrop-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes backdrop-kenburns {
+  0%   { transform: scale(1) translate3d(0, 0, 0); }
+  100% { transform: scale(1.08) translate3d(-1%, -1%, 0); }
+}
+.backdrop-layer {
+  animation: backdrop-fade-in 2.5s ease-in-out forwards, backdrop-kenburns 22s ease-in-out infinite alternate;
+  will-change: opacity, transform;
+}
+/* Same slow zoom as .backdrop-layer but without the one-time fade-in, for a layer whose
+   opacity is instead driven by React state (the multi-image crossfade in PageBackdrop). */
+.backdrop-kenburns-loop {
+  animation: backdrop-kenburns 22s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .backdrop-layer {
+    animation: backdrop-fade-in 1s ease-in-out forwards;
+  }
+  .backdrop-kenburns-loop {
+    animation: none !important;
+  }
+}
+
+/* ── Living logo (Part 2: cycling sidebar mark) ───────────────────────────────
+   N items share one keyframe and a duration equal to N * per-item slot length;
+   each item's animation-delay is offset by -(index * slot length) so exactly
+   one is visible ("its slot") at a time, in sequence. Built for 4 items/25% slots. */
+@keyframes logo-cycle-fade {
+  0%, 100% { opacity: 0; transform: scale(0.55) rotate(-15deg); }
+  3%       { opacity: 1; transform: scale(1) rotate(0deg); }
+  20%      { opacity: 1; transform: scale(1) rotate(0deg); }
+  25%      { opacity: 0; transform: scale(0.55) rotate(15deg); }
+}
+.logo-cycle-item {
+  animation: logo-cycle-fade linear infinite;
+  will-change: opacity, transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .logo-cycle-item { animation: none !important; opacity: 1 !important; transform: none !important; }
+  .logo-cycle-item:not(:first-child) { display: none !important; }
 }

@@ -300,8 +300,9 @@ export default function AnalyticsPage() {
               key={r}
               onClick={() => setRange(r)}
               className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                range === r ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+                range === r ? 'neon-sweep bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
               }`}
+              style={range === r ? ({ '--glow-color': '#3b82f6' } as React.CSSProperties) : undefined}
             >
               {RANGE_LABELS[r]}
             </button>

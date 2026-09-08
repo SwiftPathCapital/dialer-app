@@ -17,5 +17,5 @@ export default function TasksPage() {
 
   if (!agent) return null
 
-  return <ComingSoon icon={ListTodo} title="Tasks" description="Assign and track follow-up tasks for every contact." />
+  return <ComingSoon icon={ListTodo} title="Tasks" description="Assign and track follow-up tasks for every contact." glowColor="#34d399" />
 }

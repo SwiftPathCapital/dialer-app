@@ -55,10 +55,13 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-900">
-      <div className="bg-gray-800 rounded-2xl p-8 w-full max-w-sm shadow-2xl border border-gray-700">
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="bg-gray-800/90 backdrop-blur-sm rounded-2xl p-8 w-full max-w-sm shadow-2xl border border-gray-700">
         <div className="flex justify-center mb-6">
-          <div className="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center">
+          <div
+            className="neon-breathe w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center"
+            style={{ '--glow-color': '#3b82f6' } as React.CSSProperties}
+          >
             <Phone className="w-7 h-7 text-white" />
           </div>
         </div>
@@ -86,7 +89,10 @@ export default function LoginPage() {
           <button
             onClick={login}
             disabled={loading || !email.trim() || !password.trim()}
-            className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold transition-colors"
+            className={`w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold transition-colors ${
+              !loading && email.trim() && password.trim() ? 'neon-breathe' : ''
+            }`}
+            style={{ '--glow-color': '#3b82f6' } as React.CSSProperties}
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>

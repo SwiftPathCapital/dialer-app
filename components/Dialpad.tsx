@@ -67,15 +67,17 @@ export default function Dialpad() {
         ))}
       </div>
 
-      {/* Call button */}
+      {/* Call button — Softphone's signature pattern is a steady pulse, since this is
+          the one button on the page you want to read as "ready and waiting," not busy. */}
       <button
         onClick={handleCall}
         disabled={!canCall}
         className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg font-semibold text-white transition-colors ${
           canCall
-            ? 'bg-green-600 hover:bg-green-500'
+            ? 'neon-pulse bg-green-600 hover:bg-green-500'
             : 'bg-gray-700 opacity-40 cursor-not-allowed'
         }`}
+        style={canCall ? ({ '--glow-color': '#22c55e' } as React.CSSProperties) : undefined}
       >
         <Phone className="w-5 h-5" />
         Call

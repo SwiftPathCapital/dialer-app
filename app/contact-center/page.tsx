@@ -273,7 +273,8 @@ export default function ContactCenterPage() {
               <button
                 onClick={() => callNow(selectedThread.contact_number)}
                 disabled={!!activeCall}
-                className="flex items-center gap-1.5 px-3 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-colors"
+                className={`flex items-center gap-1.5 px-3 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-colors ${!activeCall ? 'neon-sweep' : ''}`}
+                style={{ '--glow-color': '#22c55e' } as React.CSSProperties}
               >
                 <Phone className="w-3.5 h-3.5" /> Call
               </button>
@@ -328,7 +329,10 @@ export default function ContactCenterPage() {
               <button
                 onClick={sendReply}
                 disabled={!draft.trim() || sending || !canSend}
-                className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white p-2 rounded-lg transition-colors shrink-0"
+                className={`bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white p-2 rounded-lg transition-colors shrink-0 ${
+                  draft.trim() && !sending && canSend ? 'neon-sweep' : ''
+                }`}
+                style={{ '--glow-color': '#22d3ee' } as React.CSSProperties}
               >
                 <Send className="w-5 h-5" />
               </button>

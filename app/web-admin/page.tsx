@@ -17,5 +17,5 @@ export default function WebAdminPage() {
 
   if (!agent) return null
 
-  return <ComingSoon icon={Globe} title="Web Admin" description="Manage your website and lead capture forms." />
+  return <ComingSoon icon={Globe} title="Web Admin" description="Manage your website and lead capture forms." glowColor="#818cf8" />
 }
