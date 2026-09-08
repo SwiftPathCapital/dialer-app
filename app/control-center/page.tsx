@@ -14,24 +14,26 @@ interface Orb {
   icon: LucideIcon
   href: string
   live: boolean // true = fully functional today, false = coming soon
+  glow: string // each orb pulses its own neon color, matching that page's own theme color elsewhere in the app
 }
 
 const ORBS: Orb[] = [
-  { key: 'dialer',     label: 'Dialer',      icon: Phone,         href: '/dashboard',    live: true },
-  { key: 'contacts',   label: 'Contacts',    icon: Users,         href: '/leads',        live: true },
-  { key: 'comms',      label: 'Comms',       icon: MessageSquare, href: '/contact-center', live: true },
-  { key: 'deals',      label: 'Deals',       icon: Handshake,     href: '/deals',        live: false },
-  { key: 'calendar',   label: 'Calendar',    icon: CalendarDays,  href: '/calendar',     live: true },
-  { key: 'tasks',      label: 'Tasks',       icon: ListTodo,      href: '/tasks',        live: false },
-  { key: 'reputation', label: 'Reputation',  icon: Star,          href: '/reputation',   live: false },
-  { key: 'reporting',  label: 'Reporting',   icon: BarChart3,     href: '/reporting',    live: false },
-  { key: 'ads',        label: 'Ads Manager', icon: Megaphone,     href: '/ads-manager',  live: false },
-  { key: 'social',     label: 'Social',      icon: Share2,        href: '/social',       live: false },
-  { key: 'webadmin',   label: 'Web Admin',   icon: Globe,         href: '/web-admin',    live: false },
+  { key: 'dialer',     label: 'Dialer',      icon: Phone,         href: '/dashboard',    live: true,  glow: '#22d3ee' },
+  { key: 'contacts',   label: 'Contacts',    icon: Users,         href: '/leads',        live: true,  glow: '#38bdf8' },
+  { key: 'comms',      label: 'Comms',       icon: MessageSquare, href: '/contact-center', live: true, glow: '#a78bfa' },
+  { key: 'deals',      label: 'Deals',       icon: Handshake,     href: '/deals',        live: false, glow: '#22d3ee' },
+  { key: 'calendar',   label: 'Calendar',    icon: CalendarDays,  href: '/calendar',     live: true,  glow: '#f472b6' },
+  { key: 'tasks',      label: 'Tasks',       icon: ListTodo,      href: '/tasks',        live: false, glow: '#34d399' },
+  { key: 'reputation', label: 'Reputation',  icon: Star,          href: '/reputation',   live: false, glow: '#fbbf24' },
+  { key: 'reporting',  label: 'Reporting',   icon: BarChart3,     href: '/reporting',    live: false, glow: '#a78bfa' },
+  { key: 'ads',        label: 'Ads Manager', icon: Megaphone,     href: '/ads-manager',  live: false, glow: '#fb923c' },
+  { key: 'social',     label: 'Social',      icon: Share2,        href: '/social',       live: false, glow: '#f472b6' },
+  { key: 'webadmin',   label: 'Web Admin',   icon: Globe,         href: '/web-admin',    live: false, glow: '#818cf8' },
 ]
 
 const RADIUS = 260 // px, distance of orbs from center on desktop
 const RADIUS_MOBILE = 150
+const ORBIT_DURATION = 60 // seconds per full revolution — slow enough to stay clickable, paused on hover anyway
 
 const DECOR_COLORS = ['#22d3ee', '#38bdf8', '#a78bfa', '#c084fc', '#818cf8']
 
@@ -54,6 +56,7 @@ export default function ControlCenterPage() {
   const [askMsg, setAskMsg] = useState('')
   const [isMobile, setIsMobile] = useState(false)
   const [animPlayState, setAnimPlayState] = useState<'running' | 'paused'>('running')
+  const [ringHovered, setRingHovered] = useState(false)
 
   useEffect(() => {
     if (agentLoading) return
@@ -76,6 +79,8 @@ export default function ControlCenterPage() {
   }, [])
 
   const radius = isMobile ? RADIUS_MOBILE : RADIUS
+  // Orbiting icons pause on hover so they're actually easy to click, not just decorative
+  const ringPlayState: 'running' | 'paused' = animPlayState === 'paused' || ringHovered ? 'paused' : 'running'
 
   const positioned = useMemo(() => {
     return ORBS.map((orb, i) => {
@@ -212,32 +217,54 @@ export default function ControlCenterPage() {
           <span className="bg-gradient-to-r from-cyan-300 to-purple-300 bg-clip-text text-transparent text-[11px] font-semibold uppercase tracking-wider">Online</span>
         </div>
 
-        {/* Orbs */}
-        {positioned.map(orb => {
-          const Icon = orb.icon
-          return (
-            <button
-              key={orb.key}
-              onClick={() => router.push(orb.href)}
-              className="absolute top-1/2 left-1/2 flex flex-col items-center gap-1.5 group z-10"
-              style={{ transform: `translate(${orb.x - 32}px, ${orb.y - 32}px)` }}
-            >
-              <div
-                className={`w-16 h-16 rounded-full flex items-center justify-center border transition-all duration-200 group-hover:scale-110 ${
-                  orb.live
-                    ? 'bg-cyan-950/60 border-cyan-400/60 shadow-[0_0_18px_rgba(34,211,238,0.35)] group-hover:shadow-[0_0_28px_rgba(34,211,238,0.6)]'
-                    : 'bg-gray-900/60 border-gray-700 group-hover:border-cyan-600/50'
-                }`}
+        {/* Orbs — the whole ring continuously revolves around the hub; each orb's own
+            content counter-rotates at the same rate so icons/labels stay upright while
+            their position sweeps around the circle. Hover pauses the ring so they're
+            actually easy to click rather than a moving target. */}
+        <div
+          className="absolute inset-0"
+          onMouseEnter={() => setRingHovered(true)}
+          onMouseLeave={() => setRingHovered(false)}
+          style={{
+            animation: `orbit-spin-cw ${ORBIT_DURATION}s linear infinite`,
+            animationPlayState: ringPlayState,
+          }}
+        >
+          {positioned.map(orb => {
+            const Icon = orb.icon
+            return (
+              <button
+                key={orb.key}
+                onClick={() => router.push(orb.href)}
+                className="absolute top-1/2 left-1/2 flex flex-col items-center gap-1.5 group z-10"
+                style={{ transform: `translate(${orb.x - 32}px, ${orb.y - 32}px)` }}
               >
-                <Icon className={`w-6 h-6 ${orb.live ? 'text-cyan-300' : 'text-gray-500 group-hover:text-cyan-400'}`} />
-              </div>
-              <span className={`text-xs font-medium ${orb.live ? 'text-cyan-200' : 'text-gray-500'}`}>{orb.label}</span>
-              {!orb.live && (
-                <span className="text-[9px] uppercase tracking-wider text-gray-600">Soon</span>
-              )}
-            </button>
-          )
-        })}
+                <div
+                  className="flex flex-col items-center gap-1.5"
+                  style={{
+                    animation: `orbit-spin-ccw ${ORBIT_DURATION}s linear infinite`,
+                    animationPlayState: ringPlayState,
+                  }}
+                >
+                  <div
+                    className="neon-pulse w-16 h-16 rounded-full flex items-center justify-center border transition-transform duration-200 group-hover:scale-110"
+                    style={{
+                      '--glow-color': orb.glow,
+                      backgroundColor: `${orb.glow}${orb.live ? '26' : '14'}`,
+                      borderColor: `${orb.glow}${orb.live ? 'b3' : '59'}`,
+                    } as React.CSSProperties}
+                  >
+                    <Icon className="w-6 h-6" style={{ color: orb.live ? orb.glow : `${orb.glow}80` }} />
+                  </div>
+                  <span className="text-xs font-medium" style={{ color: orb.live ? orb.glow : '#6b7280' }}>{orb.label}</span>
+                  {!orb.live && (
+                    <span className="text-[9px] uppercase tracking-wider text-gray-600">Soon</span>
+                  )}
+                </div>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Ask bar — Control Center's signature is chase, matching the orbit motif */}
