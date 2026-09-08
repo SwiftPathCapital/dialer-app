@@ -8,22 +8,26 @@ import { useSoftphone } from '@/lib/SoftphoneContext'
 import { supabase } from '@/lib/supabase'
 import Tour from '@/components/Tour'
 
+// Emoji picks lean into the app's own visual language — orbit/satellite, signal,
+// crystalline nodes (echoing the Apex mark's hex-node motif) — rather than generic
+// literal icons (phone, building, people), so they read as part of the same neon/
+// space theme as everything else instead of clip-art dropped on top of it.
 const NAV = [
   { href: '/control-center', icon: Orbit,     label: 'Control Center', dataTour: '', emoji: '🛰️' },
-  { href: '/dashboard',  icon: Phone,         label: 'Softphone',  dataTour: 'nav-softphone', emoji: '📞' },
-  { href: '/contact-center', icon: MessageSquare, label: 'Conversations', dataTour: 'nav-sms', emoji: '💬' },
-  { href: '/voicemail',  icon: Voicemail,     label: 'Voicemail',  dataTour: 'nav-voicemail', emoji: '📼' },
-  { href: '/callbacks',  icon: CalendarClock, label: 'Callbacks',  dataTour: '', emoji: '⏰' },
-  { href: '/calls',      icon: List,          label: 'Call Log',   dataTour: '', emoji: '📋' },
+  { href: '/dashboard',  icon: Phone,         label: 'Softphone',  dataTour: 'nav-softphone', emoji: '📡' },
+  { href: '/contact-center', icon: MessageSquare, label: 'Conversations', dataTour: 'nav-sms', emoji: '💠' },
+  { href: '/voicemail',  icon: Voicemail,     label: 'Voicemail',  dataTour: 'nav-voicemail', emoji: '🎙️' },
+  { href: '/callbacks',  icon: CalendarClock, label: 'Callbacks',  dataTour: '', emoji: '⏱️' },
+  { href: '/calls',      icon: List,          label: 'Call Log',   dataTour: '', emoji: '📶' },
 ]
 
 const ADMIN_NAV = [
   { href: '/admin/monitor',    icon: Activity,          label: 'Monitor',    dataTour: 'nav-monitor', emoji: '👁️' },
   { href: '/admin/analytics',  icon: BarChart2,          label: 'Analytics',  dataTour: '', emoji: '📊' },
-  { href: '/admin/calls',      icon: PhoneCall,          label: 'Call Center',dataTour: 'nav-calls', emoji: '☎️' },
-  { href: '/admin/callbacks',  icon: CalendarClock,      label: 'Callbacks',  dataTour: '', emoji: '🗓️' },
-  { href: '/admin/calendars',  icon: CalendarDays,       label: 'Calendars',  dataTour: '', emoji: '📆' },
-  { href: '/admin/groups',     icon: Users,              label: 'Groups',     dataTour: 'nav-groups', emoji: '👥' },
+  { href: '/admin/calls',      icon: PhoneCall,          label: 'Call Center',dataTour: 'nav-calls', emoji: '🎧' },
+  { href: '/admin/callbacks',  icon: CalendarClock,      label: 'Callbacks',  dataTour: '', emoji: '🔔' },
+  { href: '/admin/calendars',  icon: CalendarDays,       label: 'Calendars',  dataTour: '', emoji: '🗓️' },
+  { href: '/admin/groups',     icon: Users,              label: 'Groups',     dataTour: 'nav-groups', emoji: '🌐' },
   { href: '/admin/tags',       icon: Tag,                label: 'Tags',       dataTour: '', emoji: '🏷️' },
   { href: '/admin/config',     icon: SlidersHorizontal,  label: 'Config',     dataTour: '', emoji: '⚙️' },
 ]
@@ -168,7 +172,7 @@ export default function Sidebar() {
               key={href}
               href={href}
               data-tour={dataTour || undefined}
-              className={`group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`group flex items-center gap-3 px-3 py-2 rounded-lg text-base font-medium transition-all ${
                 active
                   ? 'bg-gradient-to-r from-cyan-600/80 to-purple-600/70 text-white shadow-[0_0_18px_rgba(34,211,238,0.35)] border border-cyan-400/30'
                   : 'text-gray-400 hover:text-cyan-100 hover:bg-cyan-500/10 border border-transparent'
@@ -205,7 +209,7 @@ export default function Sidebar() {
                   key={href}
                   href={href}
                   data-tour={dataTour || undefined}
-                  className={`group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                  className={`group flex items-center gap-3 px-3 py-2 rounded-lg text-base font-medium transition-all ${
                     active
                       ? 'bg-gradient-to-r from-purple-600/80 to-pink-600/70 text-white shadow-[0_0_18px_rgba(192,132,252,0.35)] border border-purple-400/30'
                       : 'text-gray-400 hover:text-purple-100 hover:bg-purple-500/10 border border-transparent'
@@ -237,7 +241,7 @@ export default function Sidebar() {
               return (
                 <Link
                   href="/admin/tenants"
-                  className={`group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                  className={`group flex items-center gap-3 px-3 py-2 rounded-lg text-base font-medium transition-all ${
                     active
                       ? 'bg-gradient-to-r from-cyan-600/80 to-blue-600/70 text-white shadow-[0_0_18px_rgba(34,211,238,0.35)] border border-cyan-400/30'
                       : 'text-gray-400 hover:text-cyan-100 hover:bg-cyan-500/10 border border-transparent'
@@ -250,7 +254,7 @@ export default function Sidebar() {
                         active ? 'opacity-100 scale-110 drop-shadow-[0_0_4px_rgba(34,211,238,0.9)]' : 'opacity-60 group-hover:opacity-100 group-hover:scale-110'
                       }`}
                     >
-                      🏢
+                      🔷
                     </span>
                   </div>
                   <span className="hidden md:block">Clients</span>

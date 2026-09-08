@@ -173,21 +173,30 @@ export default function ControlCenterPage() {
         className="relative shrink-0"
         style={{ width: radius * 2 + 120, height: radius * 2 + 120 }}
       >
-        {/* Decorative rotating rings — restrained, sit on top of the image's own ring motif */}
+        {/* Decorative rotating rings — sped up and brightened from the original "restrained"
+            pass since the new busy backdrop image makes a slow, faint ring unreadable as
+            motion rather than just competing visual noise. */}
         <div
-          className="absolute rounded-full orbit-ring-slow"
+          className="absolute rounded-full"
           style={{
             inset: 60,
-            padding: 1,
+            padding: 2,
+            animation: 'orbit-spin-cw 18s linear infinite',
             animationPlayState: animPlayState,
-            background: 'conic-gradient(from 0deg, rgba(34,211,238,0.3), rgba(192,132,252,0.3), rgba(236,72,153,0.22), rgba(45,212,191,0.3), rgba(34,211,238,0.3))',
-            WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 1px), #000 calc(100% - 1px))',
-            mask: 'radial-gradient(farthest-side, transparent calc(100% - 1px), #000 calc(100% - 1px))',
+            background: 'conic-gradient(from 0deg, rgba(34,211,238,0.9), rgba(192,132,252,0.9), rgba(236,72,153,0.7), rgba(45,212,191,0.9), rgba(34,211,238,0.9))',
+            WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px))',
+            mask: 'radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px))',
+            filter: 'drop-shadow(0 0 6px rgba(34,211,238,0.6))',
           }}
         />
         <div
-          className="absolute rounded-full border border-cyan-300/10 orbit-ring-slow-reverse"
-          style={{ inset: 10, animationPlayState: animPlayState }}
+          className="absolute rounded-full border-2 border-cyan-300/40"
+          style={{
+            inset: 10,
+            animation: 'orbit-spin-ccw 28s linear infinite',
+            animationPlayState: animPlayState,
+            boxShadow: '0 0 12px rgba(34,211,238,0.35) inset',
+          }}
         />
 
         {/* Center hub */}

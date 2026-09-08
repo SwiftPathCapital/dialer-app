@@ -164,18 +164,40 @@ body {
   to   { opacity: 1; }
 }
 @keyframes backdrop-kenburns {
-  0%   { transform: scale(1) translate3d(0, 0, 0); }
-  100% { transform: scale(1.08) translate3d(-1%, -1%, 0); }
+  0%   { transform: scale(1.06) translate3d(-2%, -1%, 0); }
+  100% { transform: scale(1.18) translate3d(2%, 2%, 0); }
 }
 .backdrop-layer {
-  animation: backdrop-fade-in 2.5s ease-in-out forwards, backdrop-kenburns 22s ease-in-out infinite alternate;
+  animation: backdrop-fade-in 2.5s ease-in-out forwards, backdrop-kenburns 26s ease-in-out infinite alternate;
   will-change: opacity, transform;
 }
-/* Same slow zoom as .backdrop-layer but without the one-time fade-in, for a layer whose
+/* Same zoom/pan as .backdrop-layer but without the one-time fade-in, for a layer whose
    opacity is instead driven by React state (the multi-image crossfade in PageBackdrop). */
 .backdrop-kenburns-loop {
-  animation: backdrop-kenburns 22s ease-in-out infinite alternate;
+  animation: backdrop-kenburns 26s ease-in-out infinite alternate;
   will-change: transform;
+}
+
+/* Moving light sweep — a diagonal band of light drifts across the backdrop, brightening
+   whatever glow/streaks are already in the image as it passes (screen blend). This is
+   what makes the backdrop's own lights read as "moving" rather than just panned. */
+@keyframes backdrop-sweep {
+  0%   { background-position: -60% -60%; }
+  100% { background-position: 160% 160%; }
+}
+.backdrop-sweep-loop {
+  background-image: linear-gradient(
+    115deg,
+    transparent 40%,
+    rgba(120, 190, 255, 0.35) 48%,
+    rgba(200, 160, 255, 0.45) 50%,
+    rgba(120, 190, 255, 0.35) 52%,
+    transparent 60%
+  );
+  background-size: 300% 300%;
+  mix-blend-mode: screen;
+  animation: backdrop-sweep 9s linear infinite;
+  will-change: background-position;
 }
 @media (prefers-reduced-motion: reduce) {
   .backdrop-layer {
@@ -183,6 +205,10 @@ body {
   }
   .backdrop-kenburns-loop {
     animation: none !important;
+  }
+  .backdrop-sweep-loop {
+    animation: none !important;
+    display: none;
   }
 }
 

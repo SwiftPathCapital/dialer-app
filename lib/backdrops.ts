@@ -10,6 +10,15 @@ export const BACKDROPS: Record<string, string[]> = {
   // 'dashboard': ['/backdrops/dashboard/1.png', '/backdrops/dashboard/2.png'],
 }
 
+// Shared rotation used by every page that doesn't have its own dedicated set above.
+// Control Center is the one exception — it renders its own full-bleed background
+// directly in its own page component, so it never reaches this fallback.
+export const DEFAULT_BACKDROPS: string[] = [
+  '/backdrops/shared/1.webp',
+  '/backdrops/shared/2.webp',
+  '/backdrops/shared/3.webp',
+]
+
 // Fallback tint per page, used only when no images are configured for that key —
 // keeps the "uniform but slightly different" feel even before real art exists.
 export const BACKDROP_TINTS: Record<string, [string, string, string, string]> = {

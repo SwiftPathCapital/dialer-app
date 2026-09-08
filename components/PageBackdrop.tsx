@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { BACKDROPS, BACKDROP_TINTS, pageKeyFromPathname } from '@/lib/backdrops'
+import { BACKDROPS, BACKDROP_TINTS, DEFAULT_BACKDROPS, pageKeyFromPathname } from '@/lib/backdrops'
 
 const BLOB_LAYOUT = [
   { top: '-8%', left: '-6%',  size: 46 },
@@ -18,7 +18,9 @@ const BLOB_LAYOUT = [
 export default function PageBackdrop() {
   const pathname = usePathname()
   const pageKey = pageKeyFromPathname(pathname || '')
-  const images = BACKDROPS[pageKey] ?? []
+  // Control Center never reaches here (it renders its own full-bleed background), so
+  // every other page either has a dedicated set in BACKDROPS or shares the default rotation.
+  const images = BACKDROPS[pageKey] ?? DEFAULT_BACKDROPS
   const [index, setIndex] = useState(0)
   const [animPlayState, setAnimPlayState] = useState<'running' | 'paused'>('running')
 
@@ -63,6 +65,9 @@ export default function PageBackdrop() {
               className="backdrop-kenburns-loop absolute inset-0 bg-cover bg-center"
               style={{ backgroundImage: `url(${src})`, animationPlayState: animPlayState }}
             />
+            {/* Drifting light band — brightens the image's own glow/streaks as it passes
+                over them (screen blend), so the lights read as moving, not just panning. */}
+            <div className="backdrop-sweep-loop absolute inset-0" style={{ animationPlayState: animPlayState }} />
           </div>
         ))
       ) : (
