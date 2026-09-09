@@ -94,7 +94,9 @@ export default function LeadsPage() {
         <div className="space-y-2">
           {leads.map(lead => {
             const displayName = lead.company_name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.name || 'Unknown'
-            const contactName = lead.company_name ? [lead.first_name, lead.last_name].filter(Boolean).join(' ') : null
+            const contactName = lead.company_name
+              ? [lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.name || null
+              : null
             const phone = lead.phone
             const cooldown = getCooldown(lead)
 

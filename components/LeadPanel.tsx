@@ -38,7 +38,9 @@ export default function LeadPanel({ lead, onClose }: { lead: Lead; onClose: () =
   const mm = String(Math.floor(elapsed / 60)).padStart(2, '0')
   const ss = String(elapsed % 60).padStart(2, '0')
   const company = lead.company_name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.name || 'Unknown'
-  const contact = lead.company_name ? [lead.first_name, lead.last_name].filter(Boolean).join(' ') : null
+  const contact = lead.company_name
+    ? [lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.name || null
+    : null
 
   return (
     <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-sm flex flex-col">
