@@ -23,6 +23,7 @@ const TOGGLEABLE_FEATURES = [
   { href: '/callbacks', label: 'Callbacks' },
   { href: '/calls', label: 'Call Log' },
   { href: '/moisture-mapping', label: 'Moisture Mapping' },
+  { href: '/apex-tap', label: 'Apex Tap' },
   { href: '/admin/monitor', label: 'Admin: Monitor' },
   { href: '/admin/analytics', label: 'Admin: Analytics' },
   { href: '/admin/calls', label: 'Admin: Call Center' },
