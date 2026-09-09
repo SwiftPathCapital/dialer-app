@@ -56,7 +56,9 @@ export default function ActiveCall({ lead }: { lead?: Lead | null }) {
   const company = lead
     ? (lead.company_name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.name)
     : (activeCall.callerName || null)
-  const contact = lead?.company_name ? [lead.first_name, lead.last_name].filter(Boolean).join(' ') : null
+  const contact = lead?.company_name
+    ? [lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.name || null
+    : null
 
   function handleAddPartyDial() {
     const num = addPartyNumber.trim()

@@ -280,7 +280,7 @@ export default function DashboardPage() {
     ? (displayedLead.company_name || [displayedLead.first_name, displayedLead.last_name].filter(Boolean).join(' ') || displayedLead.name || 'Unknown')
     : null
   const contact = displayedLead?.company_name
-    ? [displayedLead.first_name, displayedLead.last_name].filter(Boolean).join(' ')
+    ? [displayedLead.first_name, displayedLead.last_name].filter(Boolean).join(' ') || displayedLead.name || null
     : null
 
   return (
