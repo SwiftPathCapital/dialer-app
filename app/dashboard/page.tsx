@@ -29,6 +29,7 @@ export default function DashboardPage() {
   const { agent, agentLoading, activeCall, makeCall } = useSoftphone()
   const router = useRouter()
   const [leads, setLeads] = useState<Lead[]>([])
+  const [queueTotal, setQueueTotal] = useState<number | null>(null)
   const [index, setIndex] = useState(0)
   const [callHistory, setCallHistory] = useState<Call[]>([])
   const [wrapup, setWrapup] = useState<{ lead: Lead | null; phone: string } | null>(null)
@@ -55,6 +56,10 @@ export default function DashboardPage() {
     fetch(`/api/leads?agent_id=${agent.id}&limit=200`)
       .then(r => r.json())
       .then(d => setLeads(Array.isArray(d) ? d : []))
+      .catch(() => {})
+    fetch(`/api/leads?agent_id=${agent.id}&count=1`)
+      .then(r => r.json())
+      .then(d => setQueueTotal(typeof d?.total === 'number' ? d.total : null))
       .catch(() => {})
     fetch('/api/admin/tags').then(r => r.json()).then(d => setAllTags(Array.isArray(d) ? d : [])).catch(() => {})
   }, [agent, agentLoading, router])
@@ -509,7 +514,11 @@ export default function DashboardPage() {
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
                 <div className="flex items-start justify-between mb-1">
                   <p className="text-xs text-gray-500 uppercase tracking-widest">
-                    {activeLead ? 'On Call' : `Lead ${index + 1} of ${leads.length}`}
+                    {activeLead
+                      ? 'On Call'
+                      : queueTotal !== null && queueTotal > leads.length
+                        ? `Lead ${index + 1} of ${leads.length} (${queueTotal.toLocaleString()} in queue)`
+                        : `Lead ${index + 1} of ${leads.length}`}
                   </p>
                   {displayedLead?.status && (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-400">{displayedLead.status}</span>
