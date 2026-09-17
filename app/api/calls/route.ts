@@ -199,6 +199,7 @@ export async function PATCH(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const db = createServerClient()
+  const tenantId = body.agent_id ? await getAgentTenantId(db, body.agent_id) : null
 
   const { data, error } = await db
     .from('dialer_calls')
@@ -216,13 +217,17 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Stamp last_called_at on the lead so it won't appear in the dialer queue for 8 hours
+  // Stamp last_called_at on the lead so it won't appear in the dialer queue for 8 hours.
+  // Guard against short/malformed numbers (e.g. a stray "1") whose ilike pattern would
+  // match nearly every phone number in the table.
   const toDigits = (body.to_number || '').replace(/\D/g, '')
-  if (toDigits) {
-    await db
+  if (toDigits.length >= 7) {
+    let updateQuery = db
       .from('leads')
       .update({ last_called_at: new Date().toISOString() })
       .ilike('phone', `%${toDigits}%`)
+    if (tenantId) updateQuery = updateQuery.eq('tenant_id', tenantId)
+    await updateQuery
   }
 
   return NextResponse.json(data)
