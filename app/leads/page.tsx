@@ -23,6 +23,7 @@ export default function LeadsPage() {
   const { agent, agentLoading, makeCall, callErrorMsg, clearCallError } = useSoftphone()
   const router = useRouter()
   const [leads, setLeads] = useState<Lead[]>([])
+  const [totalCount, setTotalCount] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -36,9 +37,17 @@ export default function LeadsPage() {
     setLoading(true)
     const params = new URLSearchParams({ agent_id: agent!.id, limit: '200' })
     if (q) params.set('search', q)
-    const res = await fetch(`/api/leads?${params}`)
+    const countParams = new URLSearchParams(params)
+    countParams.set('count', '1')
+
+    const [res, countRes] = await Promise.all([
+      fetch(`/api/leads?${params}`),
+      fetch(`/api/leads?${countParams}`),
+    ])
     const data = await res.json()
+    const countData = await countRes.json()
     setLeads(Array.isArray(data) ? data : [])
+    setTotalCount(typeof countData?.total === 'number' ? countData.total : null)
     setLoading(false)
   }
 
@@ -60,7 +69,11 @@ export default function LeadsPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-white">Leads</h1>
-        <span className="text-gray-500 text-sm">{leads.length} leads</span>
+        <span className="text-gray-500 text-sm">
+          {totalCount !== null && totalCount > leads.length
+            ? `Showing ${leads.length} of ${totalCount.toLocaleString()} leads`
+            : `${leads.length} leads`}
+        </span>
       </div>
 
       {/* Call-blocked error toast */}
