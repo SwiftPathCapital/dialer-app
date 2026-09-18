@@ -20,6 +20,11 @@ interface RunWorkflowsParams {
   leadId: string | null
   agentId: string
   leadPhone: string | null
+  // Set when the disposition flow itself already scheduled a callback at an agent-chosen
+  // time (e.g. the "Callback" disposition's date/time picker). When present, a workflow's
+  // own Create Callback action is skipped — creating one would just duplicate it with the
+  // wrong (offset-based) time instead of the time the agent actually picked.
+  callbackAt: string | null
 }
 
 function renderTemplate(template: string, vars: Record<string, string>): string {
@@ -28,7 +33,7 @@ function renderTemplate(template: string, vars: Record<string, string>): string 
 
 // Runs every enabled workflow whose trigger_dispositions includes this disposition.
 // Fire-and-forget from the caller — errors here should never block a disposition save.
-export async function runWorkflowsForDisposition({ tenantId, disposition, leadId, agentId, leadPhone }: RunWorkflowsParams): Promise<void> {
+export async function runWorkflowsForDisposition({ tenantId, disposition, leadId, agentId, leadPhone, callbackAt }: RunWorkflowsParams): Promise<void> {
   if (!leadId) return // tag/callback/SMS actions all need a real lead
 
   const db = createServerClient()
@@ -73,6 +78,11 @@ export async function runWorkflowsForDisposition({ tenantId, disposition, leadId
           if (!tagId) return
           await db.from('lead_tags').upsert({ lead_id: leadId, tag_id: tagId }, { onConflict: 'lead_id,tag_id' })
         } else if (node.type === 'callback') {
+          // The disposition flow itself already scheduled a callback at the agent's chosen
+          // time (e.g. the "Callback" disposition's date/time picker) — creating another one
+          // here would just duplicate it at the wrong (offset-based) time.
+          if (callbackAt) return
+
           const offsetMinutes = Number(node.data?.offsetMinutes) || 0
           const scheduledAt = new Date(Date.now() + offsetMinutes * 60 * 1000).toISOString()
 

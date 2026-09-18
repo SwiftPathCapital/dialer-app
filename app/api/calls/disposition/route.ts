@@ -3,7 +3,7 @@ import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 import { runWorkflowsForDisposition } from '@/lib/workflows'
 
 export async function POST(req: NextRequest) {
-  const { lead_phone, lead_id, agent_id, disposition, notes } = await req.json()
+  const { lead_phone, lead_id, agent_id, disposition, notes, callback_at } = await req.json()
   const db = createServerClient()
   const tenantId = agent_id ? await getAgentTenantId(db, agent_id) : null
 
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
       ])
 
       // Fire-and-forget: never let a slow SMS/callback action block the disposition save.
-      runWorkflowsForDisposition({ tenantId, disposition, leadId: lead_id, agentId: agent_id, leadPhone: lead_phone })
+      runWorkflowsForDisposition({ tenantId, disposition, leadId: lead_id, agentId: agent_id, leadPhone: lead_phone, callbackAt: callback_at || null })
         .catch(err => console.error('runWorkflowsForDisposition failed:', err))
     }
   }

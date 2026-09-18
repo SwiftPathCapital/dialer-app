@@ -216,6 +216,7 @@ export default function DashboardPage() {
           agent_id: agent.id,
           disposition: disp,
           notes: notes.trim() || null,
+          callback_at: callbackAt,
         }),
       })
     )

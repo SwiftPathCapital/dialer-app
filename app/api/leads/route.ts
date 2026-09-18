@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 
-// Deterministic per-agent shuffle so no two agents start on the same lead.
-// Uses the agent's UUID as a seed → same agent always gets the same order,
-// different agents always get a different order.
-function agentSeed(agentId: string): number {
-  let h = 0
-  for (let i = 0; i < agentId.length; i++) h = Math.imul(31, h) + agentId.charCodeAt(i) | 0
-  return h >>> 0
-}
-
-function seededShuffle<T>(arr: T[], seed: number): T[] {
+// Fresh random order on every load — the 8-hour last_called_at cooldown, not shuffle
+// order, is what keeps two agents from working the same lead at once.
+function shuffle<T>(arr: T[]): T[] {
   const out = [...arr]
-  let s = seed | 1
-  const rand = () => {
-    s ^= s << 13; s ^= s >> 17; s ^= s << 5
-    return (s >>> 0) / 0xffffffff
-  }
   for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
+    const j = Math.floor(Math.random() * (i + 1));
     [out[i], out[j]] = [out[j], out[i]]
   }
   return out
@@ -121,7 +109,7 @@ export async function GET(req: NextRequest) {
 
   // Shuffle the dialer queue per agent so they don't all start on the same lead
   const result = (agentId && !phone && !search)
-    ? seededShuffle(flattened, agentSeed(agentId))
+    ? shuffle(flattened)
     : flattened
 
   return NextResponse.json(result)
