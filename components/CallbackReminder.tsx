@@ -11,6 +11,12 @@ interface Callback {
   scheduled_at: string
   notes: string | null
   status: string
+  calendar_id: string | null
+}
+
+interface CalendarLite {
+  id: string
+  reminder_offsets_minutes: number[]
 }
 
 function timeLabel(iso: string) {
@@ -27,6 +33,7 @@ function timeLabel(iso: string) {
 export default function CallbackReminder() {
   const { agent, makeCall, activeCall } = useSoftphone()
   const [callbacks, setCallbacks] = useState<Callback[]>([])
+  const [calendars, setCalendars] = useState<CalendarLite[]>([])
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const [expanded, setExpanded] = useState(false)
 
@@ -35,6 +42,10 @@ export default function CallbackReminder() {
     fetch(`/api/callbacks?agent_id=${agent.id}&status=pending`)
       .then(r => r.json())
       .then(d => setCallbacks(Array.isArray(d) ? d : []))
+      .catch(() => {})
+    fetch(`/api/calendars?agent_id=${agent.id}`)
+      .then(r => r.json())
+      .then(d => setCalendars(Array.isArray(d) ? d : []))
       .catch(() => {})
   }, [agent])
 
@@ -57,11 +68,22 @@ export default function CallbackReminder() {
     setDismissed(prev => new Set([...prev, id]))
   }
 
-  // Split into overdue/due-soon (alert) vs upcoming
+  // Each calendar can configure its own reminder lead times (admin-set); a callback is
+  // "alert"-worthy once it falls inside its own calendar's smallest configured offset.
+  // Calendars with no offsets configured never promote their callbacks into the alert bucket.
+  const calendarMinOffset = new Map<string, number>()
+  for (const cal of calendars) {
+    if (cal.reminder_offsets_minutes?.length) calendarMinOffset.set(cal.id, Math.min(...cal.reminder_offsets_minutes))
+  }
+
   const now = Date.now()
-  const alertThreshold = now + 15 * 60 * 1000 // 15 min window
-  const alertItems = callbacks.filter(c => !dismissed.has(c.id) && new Date(c.scheduled_at).getTime() <= alertThreshold)
-  const upcomingItems = callbacks.filter(c => !dismissed.has(c.id) && new Date(c.scheduled_at).getTime() > alertThreshold)
+  function isAlertWorthy(c: Callback) {
+    const minOffset = c.calendar_id ? calendarMinOffset.get(c.calendar_id) : undefined
+    if (minOffset === undefined) return false
+    return new Date(c.scheduled_at).getTime() <= now + minOffset * 60 * 1000
+  }
+  const alertItems = callbacks.filter(c => !dismissed.has(c.id) && isAlertWorthy(c))
+  const upcomingItems = callbacks.filter(c => !dismissed.has(c.id) && !isAlertWorthy(c))
   const visible = [...alertItems, ...(expanded ? upcomingItems : [])]
 
   if (callbacks.filter(c => !dismissed.has(c.id)).length === 0) return null

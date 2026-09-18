@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { runWorkflowsForDisposition } from '@/lib/workflows'
 
 export async function POST(req: NextRequest) {
   const { lead_phone, lead_id, agent_id, disposition, notes } = await req.json()
@@ -79,6 +80,10 @@ export async function POST(req: NextRequest) {
           content: commentContent,
         }),
       ])
+
+      // Fire-and-forget: never let a slow SMS/callback action block the disposition save.
+      runWorkflowsForDisposition({ tenantId, disposition, leadId: lead_id, agentId: agent_id, leadPhone: lead_phone })
+        .catch(err => console.error('runWorkflowsForDisposition failed:', err))
     }
   }
 

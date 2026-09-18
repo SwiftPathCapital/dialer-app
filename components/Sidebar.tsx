@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock, CalendarDays, List, Tag, Orbit, Building2, Droplets, Contact, QrCode } from 'lucide-react'
+import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock, CalendarDays, List, Tag, Orbit, Building2, Droplets, Contact, QrCode, Workflow } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import { supabase } from '@/lib/supabase'
 import Tour from '@/components/Tour'
@@ -30,6 +30,7 @@ const ADMIN_NAV = [
   { href: '/admin/calls',      icon: PhoneCall,          label: 'Call Center',dataTour: 'nav-calls', emoji: '🎧' },
   { href: '/admin/callbacks',  icon: CalendarClock,      label: 'Callbacks',  dataTour: '', emoji: '🔔' },
   { href: '/admin/calendars',  icon: CalendarDays,       label: 'Calendars',  dataTour: '', emoji: '🗓️' },
+  { href: '/admin/workflows',  icon: Workflow,           label: 'Workflows',  dataTour: '', emoji: '🔀' },
   { href: '/admin/groups',     icon: Users,              label: 'Groups',     dataTour: 'nav-groups', emoji: '🌐' },
   { href: '/admin/tags',       icon: Tag,                label: 'Tags',       dataTour: '', emoji: '🏷️' },
   { href: '/admin/config',     icon: SlidersHorizontal,  label: 'Config',     dataTour: '', emoji: '⚙️' },

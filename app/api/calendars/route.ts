@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await db
       .from('calendars')
-      .select('id, name, color, type, owner_agent_id, group_id, created_at, calendar_groups(id, name), calendar_members(agent_id, can_edit, agents(id, name))')
+      .select('id, name, color, type, owner_agent_id, group_id, reminder_offsets_minutes, created_at, calendar_groups(id, name), calendar_members(agent_id, can_edit, agents(id, name))')
       .eq('tenant_id', tenantId)
       .order('type', { ascending: false }) // team calendars first
       .order('name')
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
   // A given agent's own calendars: personal + any team calendar they're a member of.
   const { data, error } = await db
     .from('calendars')
-    .select('id, name, color, type, owner_agent_id, group_id, created_at, calendar_groups(id, name), calendar_members!inner(can_edit)')
+    .select('id, name, color, type, owner_agent_id, group_id, reminder_offsets_minutes, created_at, calendar_groups(id, name), calendar_members!inner(can_edit)')
     .eq('calendar_members.agent_id', agentId)
     .order('type', { ascending: false })
     .order('name')
@@ -86,13 +86,14 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { id, name, color, group_id } = await req.json()
+  const { id, name, color, group_id, reminder_offsets_minutes } = await req.json()
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
   const updates: Record<string, unknown> = {}
   if (name !== undefined) updates.name = name
   if (color !== undefined) updates.color = color
   if (group_id !== undefined) updates.group_id = group_id
+  if (reminder_offsets_minutes !== undefined) updates.reminder_offsets_minutes = reminder_offsets_minutes
 
   const db = createServerClient()
   const { data, error } = await db.from('calendars').update(updates).eq('id', id).select().single()

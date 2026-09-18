@@ -2,10 +2,16 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, Users, FolderPlus, Folder, X, CalendarDays } from 'lucide-react'
+import { Plus, Trash2, Users, FolderPlus, Folder, X, CalendarDays, Bell } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 
 const COLORS = ['#22d3ee', '#a78bfa', '#2dd4bf', '#fbbf24', '#f472b6', '#3b82f6', '#ef4444', '#22c55e']
+
+const REMINDER_PRESETS = [
+  { label: '1 day before', minutes: 1440 },
+  { label: '1 hour before', minutes: 60 },
+  { label: '15 min before', minutes: 15 },
+]
 
 interface Member {
   agent_id: string
@@ -20,6 +26,7 @@ interface CalendarRow {
   type: 'personal' | 'team'
   owner_agent_id: string | null
   group_id: string | null
+  reminder_offsets_minutes: number[]
   calendar_groups: { id: string; name: string } | null
   calendar_members: Member[]
 }
@@ -121,6 +128,16 @@ export default function AdminCalendarsPage() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, group_id: groupId || null }),
+    })
+  }
+
+  async function toggleReminderOffset(id: string, minutes: number, current: number[]) {
+    const next = current.includes(minutes) ? current.filter(m => m !== minutes) : [...current, minutes]
+    setCalendars(prev => prev.map(c => c.id === id ? { ...c, reminder_offsets_minutes: next } : c))
+    await fetch('/api/calendars', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, reminder_offsets_minutes: next }),
     })
   }
 
@@ -366,6 +383,21 @@ export default function AdminCalendarsPage() {
                       </button>
                     )}
                   </div>
+
+                  <p className="text-gray-500 text-[10px] uppercase tracking-widest mb-1.5 mt-3">Reminders</p>
+                  <div className="flex flex-wrap gap-3">
+                    {REMINDER_PRESETS.map(preset => (
+                      <label key={preset.minutes} className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={cal.reminder_offsets_minutes.includes(preset.minutes)}
+                          onChange={() => toggleReminderOffset(cal.id, preset.minutes, cal.reminder_offsets_minutes)}
+                          className="w-3.5 h-3.5 rounded accent-cyan-500"
+                        />
+                        {preset.label}
+                      </label>
+                    ))}
+                  </div>
                 </div>
               )
             })}
@@ -373,18 +405,32 @@ export default function AdminCalendarsPage() {
         )}
       </section>
 
-      {/* Personal calendars — read-only, auto-created per agent */}
+      {/* Personal calendars — auto-created per agent, only reminders are configurable */}
       <section>
         <div className="flex items-center gap-2 mb-3">
           <CalendarDays className="w-4 h-4 text-gray-400" />
           <h2 className="text-white font-semibold">Personal Calendars</h2>
-          <p className="text-gray-500 text-xs">Every agent gets one automatically — nothing to configure here.</p>
+          <p className="text-gray-500 text-xs">Every agent gets one automatically — set reminder timing per agent below.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="space-y-2">
           {personalCalendars.map(cal => (
-            <div key={cal.id} className="flex items-center gap-2 bg-gray-800/60 border border-gray-800 rounded-full px-3 py-1.5">
+            <div key={cal.id} className="flex items-center gap-3 flex-wrap bg-gray-800/60 border border-gray-800 rounded-lg px-3 py-2">
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: cal.color }} />
-              <span className="text-gray-400 text-xs">{cal.name}</span>
+              <span className="text-gray-400 text-xs w-32 shrink-0">{cal.name}</span>
+              <Bell className="w-3 h-3 text-gray-600 shrink-0" />
+              <div className="flex flex-wrap gap-3">
+                {REMINDER_PRESETS.map(preset => (
+                  <label key={preset.minutes} className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={cal.reminder_offsets_minutes.includes(preset.minutes)}
+                      onChange={() => toggleReminderOffset(cal.id, preset.minutes, cal.reminder_offsets_minutes)}
+                      className="w-3.5 h-3.5 rounded accent-cyan-500"
+                    />
+                    {preset.label}
+                  </label>
+                ))}
+              </div>
             </div>
           ))}
         </div>
