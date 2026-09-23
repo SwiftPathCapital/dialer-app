@@ -1,9 +1,10 @@
 import { createServerClient } from './supabase'
 import { sendSms } from './sms'
+import { sendEmail } from './email'
 
 interface WorkflowNode {
   id: string
-  type: 'trigger' | 'sms' | 'tag' | 'callback'
+  type: 'trigger' | 'sms' | 'tag' | 'callback' | 'email'
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any
 }
@@ -49,7 +50,7 @@ export async function runWorkflowsForDisposition({ tenantId, disposition, leadId
   if (!workflows || workflows.length === 0) return
 
   const [{ data: lead }, { data: agent }] = await Promise.all([
-    db.from('leads').select('name, first_name, last_name, company_name, phone').eq('id', leadId).single(),
+    db.from('leads').select('name, first_name, last_name, company_name, phone, email').eq('id', leadId).single(),
     db.from('agents').select('name, did').eq('id', agentId).single(),
   ])
 
@@ -73,6 +74,12 @@ export async function runWorkflowsForDisposition({ tenantId, disposition, leadId
           const message = renderTemplate(node.data?.message || '', templateVars)
           if (!message.trim()) return
           await sendSms({ from: agent.did, to: phone, body: message, agentId })
+        } else if (node.type === 'email') {
+          if (!lead?.email) return
+          const subject = renderTemplate(node.data?.subject || '', templateVars)
+          const body = renderTemplate(node.data?.body || '', templateVars)
+          if (!subject.trim() && !body.trim()) return
+          await sendEmail({ to: lead.email, subject, body })
         } else if (node.type === 'tag') {
           const tagId = node.data?.tagId
           if (!tagId) return

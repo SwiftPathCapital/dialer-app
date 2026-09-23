@@ -9,7 +9,7 @@ import {
   type Node, type Edge, type Connection, type ReactFlowInstance,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Plus, Trash2, MessageSquare, Tag as TagIcon, CalendarClock, Zap, ArrowLeft, Pencil } from 'lucide-react'
+import { Plus, Trash2, MessageSquare, Tag as TagIcon, CalendarClock, Zap, ArrowLeft, Pencil, Mail } from 'lucide-react'
 
 const DISPOSITIONS = [
   'Interested', 'Callback', 'App Received', 'Docs Received', 'Pending App & Docs',
@@ -29,7 +29,7 @@ const OFFSET_OPTIONS = [
 
 const EVENT_TYPES = ['callback', 'in_person', 'discovery', 'meeting', 'task']
 
-type ActionKind = 'sms' | 'tag' | 'callback'
+type ActionKind = 'sms' | 'email' | 'tag' | 'callback'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function offsetLabel(minutes: any) {
@@ -50,6 +50,10 @@ const ACTION_META: Record<ActionKind, {
     label: 'Send SMS', icon: MessageSquare, color: 'text-blue-400', border: 'border-blue-700/60',
     summary: d => d.message?.trim() ? d.message : 'No message set',
   },
+  email: {
+    label: 'Send Email', icon: Mail, color: 'text-teal-400', border: 'border-teal-700/60',
+    summary: d => d.subject?.trim() ? d.subject : 'No subject set',
+  },
   tag: {
     label: 'Add Tag', icon: TagIcon, color: 'text-purple-400', border: 'border-purple-700/60',
     summary: d => d.tagName || 'No tag selected',
@@ -62,6 +66,7 @@ const ACTION_META: Record<ActionKind, {
 
 function defaultsForKind(kind: ActionKind) {
   if (kind === 'sms') return { message: '' }
+  if (kind === 'email') return { subject: '', body: '' }
   if (kind === 'tag') return { tagId: '', tagName: '' }
   return { offsetMinutes: 60, notes: '', eventType: 'callback' }
 }
@@ -69,6 +74,8 @@ function defaultsForKind(kind: ActionKind) {
 interface NodeData extends Record<string, unknown> {
   kind?: ActionKind
   message?: string
+  subject?: string
+  body?: string
   tagId?: string
   tagName?: string
   offsetMinutes?: number
@@ -250,6 +257,9 @@ function WorkflowEditor({ workflow, tags, agentId, onBack, onSaved }: EditorProp
         <button onClick={() => addAction('sms')} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-blue-400 text-xs rounded-lg transition-colors">
           <Plus className="w-3.5 h-3.5" /> SMS
         </button>
+        <button onClick={() => addAction('email')} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-teal-400 text-xs rounded-lg transition-colors">
+          <Plus className="w-3.5 h-3.5" /> Email
+        </button>
         <button onClick={() => addAction('tag')} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-purple-400 text-xs rounded-lg transition-colors">
           <Plus className="w-3.5 h-3.5" /> Tag
         </button>
@@ -299,6 +309,31 @@ function WorkflowEditor({ workflow, tags, agentId, onBack, onSaved }: EditorProp
                   className="w-full bg-gray-900 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-cyan-500 placeholder-gray-600 resize-none"
                 />
                 <p className="text-gray-600 text-[10px] mt-1.5">Placeholders: {'{{lead_name}}'}, {'{{agent_name}}'}</p>
+              </div>
+            )}
+
+            {selectedNode.data.kind === 'email' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-gray-500 text-[10px] uppercase tracking-widest block mb-1">Subject</label>
+                  <input
+                    value={selectedNode.data.subject}
+                    onChange={e => updateSelectedData({ subject: e.target.value })}
+                    placeholder="Following up, {{lead_name}}"
+                    className="w-full bg-gray-900 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-cyan-500 placeholder-gray-600"
+                  />
+                </div>
+                <div>
+                  <label className="text-gray-500 text-[10px] uppercase tracking-widest block mb-1">Body</label>
+                  <textarea
+                    value={selectedNode.data.body}
+                    onChange={e => updateSelectedData({ body: e.target.value })}
+                    placeholder="Hi {{lead_name}}, this is {{agent_name}}…"
+                    rows={5}
+                    className="w-full bg-gray-900 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-cyan-500 placeholder-gray-600 resize-none"
+                  />
+                </div>
+                <p className="text-gray-600 text-[10px]">Placeholders: {'{{lead_name}}'}, {'{{agent_name}}'} · Sends to the lead's email on file. Requires an email provider to be connected — not set up yet.</p>
               </div>
             )}
 
