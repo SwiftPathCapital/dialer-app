@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock, CalendarDays, List, Tag, Orbit, Building2, Droplets, Contact, QrCode, Workflow } from 'lucide-react'
+import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock, CalendarDays, List, Tag, Orbit, Building2, Droplets, Contact, QrCode, Workflow, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import { supabase } from '@/lib/supabase'
 import Tour from '@/components/Tour'
@@ -46,7 +46,7 @@ const STATUS_OPTIONS = [
   { value: 'offline',   label: 'Offline',   emoji: '🌑', dot: 'bg-gray-500',  text: 'text-gray-400'  },
 ]
 
-function StatusPicker() {
+function StatusPicker({ labelClass }: { labelClass: string }) {
   const { agent, setAgent } = useSoftphone()
   const [open, setOpen] = useState(false)
 
@@ -73,7 +73,7 @@ function StatusPicker() {
         className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg hover:bg-gray-700 transition-colors"
       >
         <span className="text-[11px] leading-none shrink-0" title={current.label}>{current.emoji}</span>
-        <span className={`hidden md:block text-xs font-medium ${current.text}`}>{current.label}</span>
+        <span className={`${labelClass} text-xs font-medium ${current.text}`}>{current.label}</span>
       </button>
       {open && (
         <div className="absolute bottom-full left-0 mb-1 w-36 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 overflow-hidden">
@@ -97,6 +97,22 @@ export default function Sidebar() {
   const pathname = usePathname()
   const { agent, setAgent, connected } = useSoftphone()
   const [unreadVoicemails, setUnreadVoicemails] = useState(0)
+  const [collapsed, setCollapsed] = useState(false)
+
+  useEffect(() => {
+    if (localStorage.getItem('dialer_sidebar_collapsed') === '1') setCollapsed(true)
+  }, [])
+
+  function toggleCollapsed() {
+    setCollapsed(prev => {
+      const next = !prev
+      localStorage.setItem('dialer_sidebar_collapsed', next ? '1' : '0')
+      return next
+    })
+  }
+
+  // Labels hide when manually collapsed, and also on narrow viewports even when expanded
+  const lbl = collapsed ? 'hidden' : 'hidden md:block'
 
   useEffect(() => {
     if (!agent) return
@@ -136,7 +152,16 @@ export default function Sidebar() {
     : 'ring-gray-500/40'
 
   return (
-    <aside className="relative w-16 md:w-56 flex flex-col bg-[#070a14] border-r border-cyan-500/10 h-screen shrink-0 overflow-hidden shadow-[6px_0_40px_-15px_rgba(34,211,238,0.25)]">
+    <aside className={`relative ${collapsed ? 'w-16' : 'w-16 md:w-56'} flex flex-col bg-[#070a14] border-r border-cyan-500/10 h-screen shrink-0 overflow-hidden shadow-[6px_0_40px_-15px_rgba(34,211,238,0.25)]`}>
+      {/* Collapse toggle */}
+      <button
+        onClick={toggleCollapsed}
+        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        className="hidden md:flex absolute -right-3 top-6 z-10 w-6 h-6 items-center justify-center rounded-full bg-gray-800 border border-cyan-500/30 text-cyan-300 hover:bg-gray-700 hover:text-white transition-colors shadow-lg"
+      >
+        {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+      </button>
+
       {/* Galaxy backdrop blobs */}
       <div className="pointer-events-none absolute inset-0 opacity-60">
         <div className="absolute -top-10 -left-10 w-40 h-40 rounded-full bg-cyan-500/25 blur-3xl" />
@@ -161,7 +186,7 @@ export default function Sidebar() {
             </span>
           ))}
         </div>
-        <span className="hidden md:block font-bold text-lg tracking-wide bg-gradient-to-r from-cyan-300 via-teal-200 to-purple-300 bg-clip-text text-transparent">
+        <span className={`${lbl} font-bold text-lg tracking-wide bg-gradient-to-r from-cyan-300 via-teal-200 to-purple-300 bg-clip-text text-transparent`}>
           Dialer
         </span>
       </div>
@@ -197,7 +222,7 @@ export default function Sidebar() {
                   </span>
                 )}
               </div>
-              <span className="hidden md:block">{label}</span>
+              <span className={lbl}>{label}</span>
             </Link>
           )
         })}
@@ -205,7 +230,7 @@ export default function Sidebar() {
         {/* Admin section — only visible to admins */}
         {agent?.role === 'admin' && (
           <div className="mt-auto pt-4 border-t border-cyan-500/10 space-y-0.5">
-            <p className="hidden md:block text-transparent bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-xs uppercase tracking-widest px-3 pb-1 font-semibold">Admin</p>
+            <p className={`${lbl} text-transparent bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-xs uppercase tracking-widest px-3 pb-1 font-semibold`}>Admin</p>
             {ADMIN_NAV.filter(({ href }) => !agent?.tenant_hidden_features?.includes(href)).map(({ href, icon: Icon, label, dataTour, emoji }) => {
               const active = pathname.startsWith(href)
               return (
@@ -229,7 +254,7 @@ export default function Sidebar() {
                       {emoji}
                     </span>
                   </div>
-                  <span className="hidden md:block">{label}</span>
+                  <span className={lbl}>{label}</span>
                 </Link>
               )
             })}
@@ -239,7 +264,7 @@ export default function Sidebar() {
         {/* Platform section — only visible to the platform admin (manages all tenants) */}
         {agent?.is_platform_admin && (
           <div className="pt-4 space-y-0.5">
-            <p className="hidden md:block text-transparent bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-xs uppercase tracking-widest px-3 pb-1 font-semibold">Platform</p>
+            <p className={`${lbl} text-transparent bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-xs uppercase tracking-widest px-3 pb-1 font-semibold`}>Platform</p>
             {(() => {
               const active = pathname.startsWith('/admin/tenants')
               return (
@@ -261,7 +286,7 @@ export default function Sidebar() {
                       🔷
                     </span>
                   </div>
-                  <span className="hidden md:block">Clients</span>
+                  <span className={lbl}>Clients</span>
                 </Link>
               )
             })()}
@@ -282,8 +307,8 @@ export default function Sidebar() {
                 {STATUS_OPTIONS.find(o => o.value === agent?.status)?.emoji ?? STATUS_OPTIONS[2].emoji}
               </span>
             </div>
-            <span className="hidden md:block text-gray-300 text-xs truncate">{agent.name}</span>
-            <span className="ml-auto hidden md:flex items-center gap-1 text-xs text-gray-500">
+            <span className={`${lbl} text-gray-300 text-xs truncate`}>{agent.name}</span>
+            <span className={`ml-auto ${collapsed ? 'hidden' : 'hidden md:flex'} items-center gap-1 text-xs text-gray-500`}>
               {connected ? (
                 <><Wifi className="w-3 h-3 text-teal-400" /><span className="text-teal-400">Live</span></>
               ) : (
@@ -294,7 +319,7 @@ export default function Sidebar() {
 
           {/* Status picker */}
           <div data-tour="status-picker">
-            <StatusPicker />
+            <StatusPicker labelClass={lbl} />
           </div>
 
           <button
@@ -302,7 +327,7 @@ export default function Sidebar() {
             className="flex items-center gap-2 text-xs text-gray-500 hover:text-pink-400 transition-colors w-full"
           >
             <LogOut className="w-4 h-4 shrink-0" />
-            <span className="hidden md:block">Sign out</span>
+            <span className={lbl}>Sign out</span>
           </button>
 
           <Tour />
