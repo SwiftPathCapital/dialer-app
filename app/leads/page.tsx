@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Phone, Search, Building2, Lock, X } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import { Lead } from '@/lib/types'
+import LeadProfileModal from '@/components/LeadProfileModal'
 
 const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000
 
@@ -26,6 +27,7 @@ export default function LeadsPage() {
   const [totalCount, setTotalCount] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
 
   useEffect(() => {
     if (agentLoading) return
@@ -116,7 +118,8 @@ export default function LeadsPage() {
             return (
               <div
                 key={lead.id}
-                className="flex items-center gap-4 bg-gray-800 rounded-xl px-4 py-3 border border-gray-700"
+                onClick={() => setSelectedLead(lead)}
+                className="flex items-center gap-4 bg-gray-800 hover:bg-gray-750 hover:border-cyan-600/40 rounded-xl px-4 py-3 border border-gray-700 cursor-pointer transition-colors"
               >
                 <div className="p-2 rounded-full bg-blue-900/40 text-blue-400 shrink-0">
                   <Building2 className="w-4 h-4" />
@@ -158,7 +161,7 @@ export default function LeadsPage() {
                   </span>
                 ) : phone ? (
                   <button
-                    onClick={() => dial(phone)}
+                    onClick={e => { e.stopPropagation(); dial(phone) }}
                     className="neon-sweep flex items-center gap-1.5 px-3 py-1.5 bg-green-700 hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors shrink-0"
                     style={{ '--glow-color': '#22c55e' } as React.CSSProperties}
                   >
@@ -170,6 +173,19 @@ export default function LeadsPage() {
             )
           })}
         </div>
+      )}
+
+      {selectedLead && (
+        <LeadProfileModal
+          lead={selectedLead}
+          agentId={agent.id}
+          onClose={() => setSelectedLead(null)}
+          onCall={phone => { setSelectedLead(null); dial(phone) }}
+          onSaved={updated => {
+            setLeads(prev => prev.map(l => l.id === updated.id ? updated : l))
+            setSelectedLead(null)
+          }}
+        />
       )}
     </div>
   )
