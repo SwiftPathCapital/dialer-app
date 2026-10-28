@@ -48,6 +48,21 @@ interface SoftphoneContextValue {
   /** Set when makeCall is blocked (e.g. 8-hour cooldown). Auto-clears after 6 s. */
   callErrorMsg: string | null
   clearCallError: () => void
+  /** The predictive dialer's always-on connection to this agent, kept apart from activeCall. */
+  predictiveCall: PredictiveLeg | null
+  /** Auto-answer the predictive dialer's connection call (from `expectFrom`) once it rings. */
+  armPredictive: (expectFrom: string | null) => void
+  /** Stop auto-answering and drop the predictive connection if it's up. */
+  disarmPredictive: () => void
+  predictiveMuted: boolean
+  togglePredictiveMute: () => void
+}
+
+export interface PredictiveLeg {
+  id: string
+  state: 'connecting' | 'active'
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  telnyxCall: any
 }
 
 const SoftphoneContext = createContext<SoftphoneContextValue | null>(null)
@@ -62,6 +77,10 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const [muted, setMuted] = useState(false)
   const [callErrorMsg, setCallErrorMsg] = useState<string | null>(null)
   const [conferenceStatus, setConferenceStatus] = useState<ConferenceStatus>('idle')
+  const [predictiveCall, setPredictiveCall] = useState<PredictiveLeg | null>(null)
+  const [predictiveMuted, setPredictiveMuted] = useState(false)
+  const predictiveArmedRef = useRef<{ from: string | null } | null>(null)
+  const predictiveCallRef = useRef<PredictiveLeg | null>(null)
   const callErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const conferenceAudioCtxRef = useRef<AudioContext | null>(null)
   const inboundNotifRef = useRef<Notification | null>(null)
@@ -240,6 +259,27 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
           // Outbound 180 Ringing — ignore
           if (outboundCallIdRef.current === call.id) return
 
+          // ── PREDICTIVE: the dialer's connection call — answer it silently ──
+          const armed = predictiveArmedRef.current
+          if (armed && !predictiveCallRef.current) {
+            const remoteName: string = call.options?.remoteCallerName || ''
+            const remoteDigits = String(call.options?.remoteCallerNumber || '').replace(/\D/g, '').slice(-10)
+            const expectDigits = (armed.from || '').replace(/\D/g, '').slice(-10)
+            if (remoteName.startsWith('PREDICTIVE') || (expectDigits && remoteDigits === expectDigits)) {
+              const leg: PredictiveLeg = { id: call.id, state: 'connecting', telnyxCall: call }
+              predictiveCallRef.current = leg
+              setPredictiveCall(leg)
+              try { call.answer() } catch (err) { console.error('[predictive] answer failed', err) }
+              return
+            }
+          }
+          // While in a predictive session the agent can't take other calls — decline so
+          // group calls ring the next agent and direct calls go to voicemail.
+          if (predictiveCallRef.current) {
+            try { call.hangup() } catch {}
+            return
+          }
+
           const callerName: string = call.options?.remoteCallerName || ''
           const groupName = callerName.startsWith('GROUP:') ? callerName.slice(6) : undefined
           const groupObj = groupName ? groupsRef.current.find(g => g.name === groupName) : undefined
@@ -335,6 +375,13 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
 
         // ── ACTIVE ───────────────────────────────────────────────────────────
         } else if (call.state === 'active') {
+          if (predictiveCallRef.current && call.id === predictiveCallRef.current.id) {
+            const leg: PredictiveLeg = { ...predictiveCallRef.current, state: 'active', telnyxCall: call }
+            predictiveCallRef.current = leg
+            setPredictiveCall(leg)
+            attachRemoteAudio(call)
+            return
+          }
           stopRing()
           callActiveAtRef.current = Date.now()
 
@@ -452,6 +499,14 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
 
         // ── HANGUP / DESTROY ─────────────────────────────────────────────────
         } else if (call.state === 'hangup' || call.state === 'destroy') {
+          if (predictiveCallRef.current && call.id === predictiveCallRef.current.id) {
+            predictiveCallRef.current = null
+            setPredictiveCall(null)
+            setPredictiveMuted(false)
+            const audio = document.getElementById('telnyx-remote-audio') as HTMLAudioElement
+            if (audio) { audio.srcObject = null; audio.remove() }
+            return
+          }
           // Waiting call was declined/timed out remotely
           if (waitingCallRef.current && call.id === waitingCallRef.current.id) {
             setWaitingCall(null)
@@ -526,6 +581,40 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   }, [agent?.sip_username, agent?.sip_password])
 
   // ── Audio helpers ─────────────────────────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function attachRemoteAudio(call: any, retry = true) {
+    if (!call.remoteStream) {
+      if (retry) setTimeout(() => attachRemoteAudio(call, false), 1000)
+      return
+    }
+    let audio = document.getElementById('telnyx-remote-audio') as HTMLAudioElement
+    if (!audio) {
+      audio = document.createElement('audio')
+      audio.id = 'telnyx-remote-audio'
+      audio.autoplay = true
+      document.body.appendChild(audio)
+    }
+    audio.srcObject = call.remoteStream
+    audio.play().catch(console.error)
+  }
+
+  function armPredictive(expectFrom: string | null) {
+    predictiveArmedRef.current = { from: expectFrom }
+  }
+
+  function disarmPredictive() {
+    predictiveArmedRef.current = null
+    const leg = predictiveCallRef.current
+    if (leg) { try { leg.telnyxCall.hangup() } catch {} }
+  }
+
+  function togglePredictiveMute() {
+    const leg = predictiveCallRef.current
+    if (!leg) return
+    try { if (predictiveMuted) leg.telnyxCall.unmuteAudio(); else leg.telnyxCall.muteAudio() } catch {}
+    setPredictiveMuted(m => !m)
+  }
+
   function startRing(type: RingType) {
     stopRing()
     if (typeof window === 'undefined') return
@@ -636,6 +725,12 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   async function makeCall(number: string, opts?: { bypassCooldown?: boolean }): Promise<boolean> {
     if (!clientRef.current || !agent) return false
     if (dialingRef.current) return false
+    if (predictiveCallRef.current || predictiveArmedRef.current) {
+      setCallErrorMsg('Stop predictive dialing before placing a manual call.')
+      if (callErrorTimerRef.current) clearTimeout(callErrorTimerRef.current)
+      callErrorTimerRef.current = setTimeout(() => setCallErrorMsg(null), 6000)
+      return false
+    }
 
     // ── Pre-flight: cooldown + calling hours + caller ID ─────────────────────
     // Must happen BEFORE client.newCall() so the WebRTC dial never fires when blocked.
@@ -915,6 +1010,11 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       muted,
       callErrorMsg,
       clearCallError,
+      predictiveCall,
+      armPredictive,
+      disarmPredictive,
+      predictiveMuted,
+      togglePredictiveMute,
     }}>
       {children}
     </SoftphoneContext.Provider>

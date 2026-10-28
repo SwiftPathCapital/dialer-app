@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
 import { getDialerSettings, validateSettingsPatch, PLATFORM_ONLY_FIELDS, TENANT_ADMIN_FIELDS } from '@/lib/dialerSettings'
 import { resolveTargetTenant } from '@/lib/dialerAccess'
-import { getConfigValue } from '@/lib/telnyx'
+import { predictiveSetupProblems } from '@/lib/predictive/engine'
 
 // GET: any agent can read their own tenant's flags (the Softphone needs them); admins also
 // get the tenant's inbound groups for the callback-routing picker.
@@ -16,14 +16,14 @@ export async function GET(req: NextRequest) {
   const isAdmin = target.actor.is_platform_admin || (target.actor.role === 'admin' && target.actor.tenant_id === target.tenantId)
 
   let groups: { id: string; name: string }[] = []
-  let predictiveReady = false
+  let predictiveProblems: string[] = []
   if (isAdmin) {
     const { data } = await db.from('inbound_groups').select('id, name').eq('tenant_id', target.tenantId).order('name')
     groups = data ?? []
-    predictiveReady = !!(await getConfigValue('telnyx_call_control_connection_id'))
+    if (settings.predictive_enabled) predictiveProblems = await predictiveSetupProblems()
   }
 
-  return NextResponse.json({ settings, groups, isAdmin, isPlatformAdmin: target.actor.is_platform_admin, predictiveReady })
+  return NextResponse.json({ settings, groups, isAdmin, isPlatformAdmin: target.actor.is_platform_admin, predictiveProblems })
 }
 
 export async function PATCH(req: NextRequest) {

@@ -2,13 +2,14 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Clock, PhoneIncoming, PhoneOutgoing, SkipForward, Phone, Mail, RotateCcw, Plus, X } from 'lucide-react'
+import { Clock, PhoneIncoming, PhoneOutgoing, SkipForward, Phone, Mail, RotateCcw, Plus, X, Zap, Pause, Play } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import Dialpad from '@/components/Dialpad'
 import ActiveCall from '@/components/ActiveCall'
 import StatusSelector from '@/components/StatusSelector'
 import VoicemailGreeting from '@/components/VoicemailGreeting'
 import NewLeadForm from '@/components/NewLeadForm'
+import PredictivePanel from '@/components/PredictivePanel'
 import { Lead, Call, Tag } from '@/lib/types'
 
 const DISPOSITIONS = [
@@ -26,7 +27,7 @@ const DISPOSITIONS = [
 ]
 
 export default function DashboardPage() {
-  const { agent, agentLoading, activeCall, makeCall } = useSoftphone()
+  const { agent, agentLoading, activeCall, makeCall, connected } = useSoftphone()
   const router = useRouter()
   const [leads, setLeads] = useState<Lead[]>([])
   const [queueTotal, setQueueTotal] = useState<number | null>(null)
@@ -49,6 +50,14 @@ export default function DashboardPage() {
   const prevCallRef = useRef(activeCall)
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [tagMenuOpen, setTagMenuOpen] = useState(false)
+  // Power dialer
+  const [dialerFlags, setDialerFlags] = useState<{ power: boolean; predictive: boolean; wrapUpSeconds: number }>({ power: false, predictive: false, wrapUpSeconds: 15 })
+  const [autoDial, setAutoDial] = useState(false)
+  const [countdown, setCountdown] = useState<number | null>(null)
+  const [autoDialNote, setAutoDialNote] = useState<string | null>(null)
+  const [predictiveMode, setPredictiveMode] = useState(false)
+  const blockedStreakRef = useRef(0)
+  const autoDialingRef = useRef(false)
 
   useEffect(() => {
     if (agentLoading) return
@@ -62,7 +71,22 @@ export default function DashboardPage() {
       .then(d => setQueueTotal(typeof d?.total === 'number' ? d.total : null))
       .catch(() => {})
     fetch('/api/admin/tags').then(r => r.json()).then(d => setAllTags(Array.isArray(d) ? d : [])).catch(() => {})
+    fetch(`/api/dialer/settings?agent_id=${agent.id}`)
+      .then(r => r.json())
+      .then(d => {
+        if (!d?.settings) return
+        setDialerFlags({ power: !!d.settings.power_dialer_enabled, predictive: !!d.settings.predictive_enabled, wrapUpSeconds: d.settings.wrap_up_seconds ?? 15 })
+        try { if (d.settings.power_dialer_enabled && localStorage.getItem(`power_dial_${agent.id}`) === '1') setAutoDial(true) } catch {}
+      })
+      .catch(() => {})
   }, [agent, agentLoading, router])
+
+  function setAutoDialPersist(on: boolean) {
+    setAutoDial(on)
+    setAutoDialNote(null)
+    blockedStreakRef.current = 0
+    try { if (agent) localStorage.setItem(`power_dial_${agent.id}`, on ? '1' : '0') } catch {}
+  }
 
   // Apply a tag-list update to whichever state currently holds this lead
   function applyTagsUpdate(leadId: string, tags: Tag[]) {
@@ -172,6 +196,51 @@ export default function DashboardPage() {
       setNotes('')
     }
   }, [activeCall])
+
+  // ── Power dialer: after wrap-up, count down then dial the next queue lead ──
+  const powerReady = dialerFlags.power && autoDial && connected && !predictiveMode && !activeCall && !wrapup && !callbackPicker && !newLeadModal && !saving && !!lead
+  useEffect(() => {
+    if (!powerReady) { setCountdown(null); return }
+    // Right after a blocked lead, move on quickly instead of waiting out a full wrap-up.
+    const secs = blockedStreakRef.current > 0 ? 1 : dialerFlags.wrapUpSeconds
+    const deadline = Date.now() + secs * 1000
+    setCountdown(secs)
+    const timer = setInterval(() => {
+      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
+      setCountdown(left)
+      if (left === 0) { clearInterval(timer); autoDialLead() }
+    }, 250)
+    return () => clearInterval(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [powerReady, lead?.id, dialerFlags.wrapUpSeconds])
+
+  async function autoDialLead() {
+    if (!lead || autoDialingRef.current) return
+    autoDialingRef.current = true
+    setCountdown(null)
+    const e164 = (lead.phone || '').replace(/\D/g, '').replace(/^1?(\d{10})$/, '+1$1')
+    let ok = false
+    if (e164.startsWith('+')) {
+      setDialedLead(lead)
+      ok = await makeCall(e164)
+      if (!ok) setDialedLead(null)
+    }
+    autoDialingRef.current = false
+    if (ok) { blockedStreakRef.current = 0; return }
+
+    // Blocked (calling hours / cooldown) or no valid number — move on, but don't race
+    // through the whole queue if nothing is callable right now.
+    blockedStreakRef.current += 1
+    if (blockedStreakRef.current >= 25 || index >= leads.length - 1) {
+      setAutoDial(false)
+      setAutoDialNote(index >= leads.length - 1
+        ? 'Auto-dial paused: reached the end of the loaded queue. Reload the page for more leads.'
+        : 'Auto-dial paused: the last 25 leads couldn\'t be called right now (outside calling hours or on cooldown).')
+      blockedStreakRef.current = 0
+      return
+    }
+    setIndex(i => Math.min(i + 1, leads.length - 1))
+  }
 
   function selectDisposition(disp: string) {
     if (!wrapup || !agent) return
@@ -307,8 +376,15 @@ export default function DashboardPage() {
           <VoicemailGreeting />
         </div>
 
+        {/* Predictive dialer — replaces the manual queue while a session is open */}
+        {dialerFlags.predictive && !wrapup && !newLeadModal && (!activeCall || predictiveMode) && (
+          <div className={predictiveMode ? 'flex-1 min-w-72' : 'flex-1 min-w-72 max-w-md'}>
+            <PredictivePanel agentId={agent.id} onActiveChange={setPredictiveMode} />
+          </div>
+        )}
+
         {/* Right: new-lead form (inline) + wrap-up / preview dialer */}
-        {(wrapup || lead || activeLead || newLeadModal || (activeCall && !callLeadLoading)) && (
+        {!predictiveMode && (wrapup || lead || activeLead || newLeadModal || (activeCall && !callLeadLoading)) && (
           <div className="flex-1 min-w-72 space-y-4">
 
             {/* Inline new-contact form — shown when caller has no lead record yet */}
@@ -585,6 +661,30 @@ export default function DashboardPage() {
                   {displayedLead?.employee_size && <Row label="Employees" value={displayedLead.employee_size} />}
                   {displayedLead?.why_funds && <Row label="Why Funds" value={displayedLead.why_funds} />}
                 </div>
+
+                {!activeLead && lead && dialerFlags.power && (
+                  <div className="mt-5 flex items-center gap-3 flex-wrap rounded-lg border border-cyan-800/50 bg-cyan-950/20 px-3 py-2">
+                    <Zap className={`w-4 h-4 ${autoDial ? 'text-cyan-300' : 'text-gray-500'}`} />
+                    <span className="text-sm text-gray-200">Auto-dial</span>
+                    <button
+                      onClick={() => setAutoDialPersist(!autoDial)}
+                      role="switch"
+                      aria-checked={autoDial}
+                      className={`relative w-10 h-5 rounded-full transition-colors ${autoDial ? 'bg-cyan-600' : 'bg-gray-600'}`}
+                    >
+                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${autoDial ? 'left-5' : 'left-0.5'}`} />
+                    </button>
+                    {autoDial && countdown !== null && (
+                      <>
+                        <span className="text-cyan-300 text-sm tabular-nums">Dialing in {countdown}s</span>
+                        <button onClick={autoDialLead} className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-cyan-700 hover:bg-cyan-600 text-white"><Play className="w-3 h-3" /> Dial now</button>
+                        <button onClick={() => setAutoDialPersist(false)} className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-200"><Pause className="w-3 h-3" /> Pause</button>
+                      </>
+                    )}
+                    {autoDial && !connected && <span className="text-amber-400 text-xs">Waiting for the softphone to connect…</span>}
+                  </div>
+                )}
+                {autoDialNote && <p className="text-amber-400 text-xs mt-2">{autoDialNote}</p>}
 
                 {!activeLead && lead && (
                   <div className="flex gap-3 mt-5">

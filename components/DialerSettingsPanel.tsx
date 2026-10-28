@@ -58,7 +58,7 @@ export default function DialerSettingsPanel({ agentId, tenantId, tenantName }: {
   const [settings, setSettings] = useState<DialerSettings | null>(null)
   const [groups, setGroups] = useState<{ id: string; name: string }[]>([])
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
-  const [predictiveReady, setPredictiveReady] = useState(false)
+  const [predictiveProblems, setPredictiveProblems] = useState<string[]>([])
   const [numbers, setNumbers] = useState<CallerIdRow[]>([])
   const [coverage, setCoverage] = useState<Coverage | null>(null)
   const [stats, setStats] = useState<PredictiveStats | null>(null)
@@ -86,7 +86,7 @@ export default function DialerSettingsPanel({ agentId, tenantId, tenantName }: {
         setSettings(d.settings)
         setGroups(d.groups ?? [])
         setIsPlatformAdmin(!!d.isPlatformAdmin)
-        setPredictiveReady(!!d.predictiveReady)
+        setPredictiveProblems(Array.isArray(d.predictiveProblems) ? d.predictiveProblems : [])
       })
       .catch(err => setError(err.message))
   }, [qs])
@@ -330,11 +330,14 @@ export default function DialerSettingsPanel({ agentId, tenantId, tenantName }: {
             <Radar className="w-4 h-4 text-cyan-400" />
             <p className="text-white font-semibold text-sm">Predictive dialer</p>
           </div>
-          {!predictiveReady && (
-            <p className="text-amber-400 text-xs mb-3 flex items-start gap-1.5">
+          {predictiveProblems.length > 0 && (
+            <div className="text-amber-400 text-xs mb-3 flex items-start gap-1.5">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-              Not set up yet: add the Telnyx Call Control connection ID under Admin → Config. Until then agents can&apos;t start a predictive session.
-            </p>
+              <div>
+                <p>Not set up yet, so agents can&apos;t start a predictive session:</p>
+                <ul className="list-disc ml-4 mt-1">{predictiveProblems.map(p => <li key={p}>{p}</li>)}</ul>
+              </div>
+            </div>
           )}
 
           {stats && (

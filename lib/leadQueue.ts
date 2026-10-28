@@ -18,6 +18,8 @@ export interface LeadFilterOpts {
 // Shared by the Softphone queue (/api/leads) and the predictive pacer so both use exactly
 // the same eligibility rules: tenant, assignment, enabled lead sources, 8-hour cooldown,
 // dead statuses, and calling hours in the lead's own time zone.
+// Add .order()/.limit() to the query BEFORE calling this: query builders are thenables, so
+// awaiting this async function executes the query and resolves to { data, error }.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function applyLeadFilters(db: any, query: any, opts: LeadFilterOpts): Promise<any> {
   const { agentId, phone, search, tenantId, assignedToAnyOf } = opts
