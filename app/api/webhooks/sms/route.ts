@@ -20,13 +20,15 @@ export async function POST(req: NextRequest) {
   // first. Falls back to the schema default (today's only tenant) if nothing matches.
   let tenantId: string | null = null
   if (ourDigits) {
-    const [{ data: ownerGroup }, { data: ownerAgent }] = await Promise.all([
+    const [{ data: ownerGroup }, { data: ownerAgent }, { data: ownerLocal }] = await Promise.all([
       db.from('inbound_groups').select('tenant_id, phone_number'),
       db.from('agents').select('tenant_id, did'),
+      db.from('dialer_caller_ids').select('tenant_id, phone_number'),
     ])
     const group = ownerGroup?.find(g => g.phone_number?.replace(/\D/g, '') === ourDigits)
     const agent = ownerAgent?.find(a => a.did?.replace(/\D/g, '') === ourDigits)
-    tenantId = group?.tenant_id ?? agent?.tenant_id ?? null
+    const local = ownerLocal?.find(n => n.phone_number.replace(/\D/g, '') === ourDigits)
+    tenantId = group?.tenant_id ?? agent?.tenant_id ?? local?.tenant_id ?? null
   }
 
   const { data: conversation } = await db

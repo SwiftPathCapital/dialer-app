@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, getAgentTenantId } from '@/lib/supabase'
 
 const ALLOWED_KEYS = [
-  'telnyx_api_key', 'telnyx_public_key', 'telnyx_sip_connection_id', 'app_url',
+  'telnyx_api_key', 'telnyx_public_key', 'telnyx_sip_connection_id', 'telnyx_call_control_connection_id', 'app_url',
   'spacemail_email', 'spacemail_password',
   'spacemail_imap_host', 'spacemail_imap_port',
   'spacemail_smtp_host', 'spacemail_smtp_port',

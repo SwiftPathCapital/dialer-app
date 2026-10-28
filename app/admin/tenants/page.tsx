@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Building2, Plus, Users, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
+import DialerSettingsPanel from '@/components/DialerSettingsPanel'
 
 interface Tenant {
   id: string
@@ -31,6 +32,7 @@ const TOGGLEABLE_FEATURES = [
   { href: '/admin/calendars', label: 'Admin: Calendars' },
   { href: '/admin/groups', label: 'Admin: Groups' },
   { href: '/admin/tags', label: 'Admin: Tags' },
+  { href: '/admin/dialer-settings', label: 'Admin: Dialer Settings' },
   { href: '/admin/config', label: 'Admin: Config' },
 ]
 
@@ -130,7 +132,7 @@ export default function PlatformTenantsPage() {
   if (!agent || !agent.is_platform_admin) return null
 
   return (
-    <div className="p-6 max-w-3xl">
+    <div className="p-6 max-w-4xl">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white">Clients</h1>
@@ -277,6 +279,9 @@ export default function PlatformTenantsPage() {
                     <p className="text-gray-600 text-xs mt-2">
                       Hidden here is hidden for every agent in {t.name}, regardless of their individual permissions.
                     </p>
+                    <div className="mt-5">
+                      <DialerSettingsPanel agentId={agent.id} tenantId={t.id} tenantName={t.name} />
+                    </div>
                   </div>
                 )}
               </div>

@@ -47,6 +47,13 @@ const SECTIONS = [
         sensitive: false,
         placeholder: '1234567890123456789',
       },
+      {
+        key: 'telnyx_call_control_connection_id',
+        label: 'Call Control Connection ID',
+        description: 'Only needed for the predictive dialer. Telnyx Portal → Voice → Programmable Voice → Call Control app; set its webhook URL to <app url>/api/webhooks/dialer.',
+        sensitive: false,
+        placeholder: '1234567890123456789',
+      },
     ],
   },
   {
