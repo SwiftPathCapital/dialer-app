@@ -211,6 +211,7 @@ export async function POST(req: NextRequest) {
       status: 'initiated',
       started_at: new Date().toISOString(),
       telnyx_call_control_id: body.telnyx_call_control_id || null,
+      ...(tenantId ? { tenant_id: tenantId } : {}),
     })
     .select()
     .single()

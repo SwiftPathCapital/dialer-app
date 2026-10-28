@@ -637,27 +637,32 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     if (!clientRef.current || !agent) return false
     if (dialingRef.current) return false
 
-    // ── 8-hour cooldown pre-flight check ─────────────────────────────────────
+    // ── Pre-flight: cooldown + calling hours + caller ID ─────────────────────
     // Must happen BEFORE client.newCall() so the WebRTC dial never fires when blocked.
-    // Bypass when the agent explicitly chose to call (e.g. from a scheduled callback).
+    // bypassCooldown (scheduled callbacks, dialpad, redial) skips only the 8-hour
+    // cooldown — calling hours in the lead's time zone always apply.
+    let callerNumber: string = agent.did || agent.extension || agent.sip_username
     const digits = number.replace(/\D/g, '')
-    if (digits.length >= 7 && !opts?.bypassCooldown) {
+    if (digits.length >= 7) {
       try {
-        const res = await fetch(`/api/calls/cooldown?phone=${digits}${agent?.id ? `&agent_id=${agent.id}` : ''}`)
+        const params = new URLSearchParams({ phone: digits, agent_id: agent.id })
+        if (opts?.bypassCooldown) params.set('bypass_cooldown', '1')
+        const res = await fetch(`/api/calls/preflight?${params}`)
         if (res.ok) {
           const check = await res.json()
           if (check.blocked) {
-            const until = new Date(check.until)
-            const timeStr = until.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-            const msg = `This lead cannot be called again until ${timeStr} (8-hour cooldown after disposition).`
+            const msg = check.reason === 'calling_hours'
+              ? check.message || 'Outside calling hours for this lead.'
+              : `This lead cannot be called again until ${new Date(check.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} (8-hour cooldown after disposition).`
             setCallErrorMsg(msg)
             if (callErrorTimerRef.current) clearTimeout(callErrorTimerRef.current)
             callErrorTimerRef.current = setTimeout(() => setCallErrorMsg(null), 6000)
             return false
           }
+          if (check.callerId) callerNumber = check.callerId
         }
       } catch {
-        // Network error — let the call proceed rather than silently block
+        // Network error — let the call proceed on the agent's own number rather than silently block
       }
     }
 
@@ -668,7 +673,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     try {
       call = clientRef.current.newCall({
         destinationNumber: number,
-        callerNumber: agent.did || agent.extension || agent.sip_username,
+        callerNumber,
       })
     } catch (err) {
       console.error('newCall failed', err)
@@ -681,7 +686,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from_number: agent.extension || agent.sip_username,
+        from_number: callerNumber,
         to_number: number,
         agent_id: agent.id,
         telnyx_call_control_id: call.id,
@@ -736,7 +741,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from_number: agent.extension || agent.sip_username,
+        from_number: agent.did || agent.extension || agent.sip_username,
         to_number: number,
         agent_id: agent.id,
         telnyx_call_control_id: call.id,
