@@ -27,9 +27,21 @@ async function dialerWebhookUrl() {
   return `${(await getAppUrl()).replace(/\/$/, '')}/api/webhooks/dialer`
 }
 
-export function abandonedMessage(settings: DialerSettings, tenantName: string): string {
+// Spoken digit by digit with pauses so text-to-speech doesn't read it as one big number.
+export function spokenPhone(e164: string | null | undefined): string | null {
+  const d = (e164 || '').replace(/\D/g, '').slice(-10)
+  if (d.length !== 10) return null
+  const say = (s: string) => s.split('').join(' ')
+  return `${say(d.slice(0, 3))}, ${say(d.slice(3, 6))}, ${say(d.slice(6))}`
+}
+
+// FTC TSR safe harbor: the message must give the seller's name and a phone number to call.
+export function abandonedMessage(settings: DialerSettings, tenantName: string, callbackNumber: string | null): string {
   const name = settings.business_name || tenantName
-  return `Hello, this is ${name}. Sorry we missed you. Please call us back at this number. Thank you.`
+  const number = spokenPhone(callbackNumber)
+  return number
+    ? `Hello, this is ${name}. Sorry we missed you. Please call us back at ${number}. Again, that's ${number}. Thank you.`
+    : `Hello, this is ${name}. Sorry we missed you. Please call us back at the number on your caller ID. Thank you.`
 }
 
 export async function hangupCall(callControlId: string | null | undefined) {
@@ -288,7 +300,7 @@ export async function connectOrAbandon(db: Db, attempt: AttemptRow, callControlI
   ])
   try {
     await telnyxRequest('POST', `/calls/${callControlId}/actions/speak`, {
-      payload: abandonedMessage(settings, tenant?.name || 'our office'),
+      payload: abandonedMessage(settings, tenant?.name || 'our office', attempt.caller_id),
       voice: 'female',
       language: 'en-US',
     })

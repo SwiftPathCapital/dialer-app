@@ -359,7 +359,7 @@ export default function DialerSettingsPanel({ agentId, tenantId, tenantName }: {
                 className={`${inputCls} w-full`}
               />
               <p className="text-gray-600 text-[11px] mt-1">
-                If someone answers and no agent is free, they hear: &ldquo;Hello, this is {settings.business_name || tenantName || 'your business'}. Sorry we missed you — please call us back at this number.&rdquo;
+                If someone answers and no agent is free, they hear: &ldquo;Hello, this is {settings.business_name || tenantName || 'your business'}. Sorry we missed you. Please call us back at&rdquo; followed by the number that called them, read out twice. Callbacks to that number follow your callback routing.
               </p>
             </div>
             <div>
