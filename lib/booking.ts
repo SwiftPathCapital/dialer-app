@@ -96,6 +96,32 @@ export function generateSlots(rules: BookingRules, busy: Interval[], now = Date.
   return out
 }
 
+function hash32(s: string): number {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) }
+  return h >>> 0
+}
+
+// "Limited availability": show at most `perDay` open times per local day. Which ones is
+// decided by a stable hash of (seed, slot time), so the picks look organic, differ day to
+// day, and don't reshuffle when someone reloads the page.
+export function limitSlotsPerDay(slots: number[], perDay: number | null | undefined, timeZone: string, seed: string): number[] {
+  if (!perDay || perDay <= 0) return slots
+  const byDay = new Map<string, number[]>()
+  for (const s of slots) {
+    const d = zonedDate(s, timeZone)
+    const key = `${d.y}-${d.m}-${d.d}`
+    if (!byDay.has(key)) byDay.set(key, [])
+    byDay.get(key)!.push(s)
+  }
+  const out: number[] = []
+  for (const daySlots of byDay.values()) {
+    const picked = [...daySlots].sort((a, b) => hash32(`${seed}|${a}`) - hash32(`${seed}|${b}`)).slice(0, perDay)
+    out.push(...picked)
+  }
+  return out.sort((a, b) => a - b)
+}
+
 export function isSlotAvailable(rules: BookingRules, busy: Interval[], startMs: number, now = Date.now()): boolean {
   return generateSlots(rules, busy, now).includes(startMs)
 }

@@ -87,6 +87,10 @@ export async function PUT(req: NextRequest) {
     if (err) return NextResponse.json({ error: err }, { status: 400 })
     row.weekly_hours = body.weekly_hours
   }
+  if (body.max_slots_per_day !== undefined) {
+    if (body.max_slots_per_day !== null && !intIn(body.max_slots_per_day, 1, 48)) return NextResponse.json({ error: 'Times per day must be 1–48, or show all' }, { status: 400 })
+    row.max_slots_per_day = body.max_slots_per_day
+  }
   if (body.enabled !== undefined) {
     if (typeof body.enabled !== 'boolean') return NextResponse.json({ error: 'enabled must be true or false' }, { status: 400 })
     row.enabled = body.enabled

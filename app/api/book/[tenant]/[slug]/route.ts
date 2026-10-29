@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { generateSlots } from '@/lib/booking'
+import { generateSlots, limitSlotsPerDay } from '@/lib/booking'
 import { loadPublicPage, calendarAttendees, busyIntervals } from '@/lib/bookingData'
 
 // PUBLIC (no login) — what anyone with the booking link can see and do. Exposes only the
@@ -33,7 +33,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const { attendees } = await calendarAttendees(db, page.calendar_id)
   const now = Date.now()
   const busy = await busyIntervals(db, attendees.map(a => a.id), now, now + (page.max_days_ahead + 2) * DAY_MS)
-  const slots = attendees.length ? generateSlots(page, busy, now) : []
+  const slots = attendees.length ? limitSlotsPerDay(generateSlots(page, busy, now), page.max_slots_per_day, page.timezone, page.id) : []
 
   return NextResponse.json({
     page: {
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const now = Date.now()
   const attendeeIds = attendees.map(a => a.id)
   const busy = await busyIntervals(db, attendeeIds, now, now + (page.max_days_ahead + 2) * DAY_MS)
-  if (!generateSlots(page, busy, now).includes(startMs)) {
+  if (!limitSlotsPerDay(generateSlots(page, busy, now), page.max_slots_per_day, page.timezone, page.id).includes(startMs)) {
     return NextResponse.json({ error: 'That time was just taken. Please pick another.' }, { status: 409 })
   }
 

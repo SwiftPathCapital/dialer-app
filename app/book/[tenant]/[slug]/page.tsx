@@ -95,56 +95,65 @@ export default function BookingPage() {
     setBooked(d.start)
   }
 
+  // Sits on the app's global animated backdrop (PageBackdrop in the root layout); the
+  // sidebar hides itself on /book/* routes.
   const shell = (children: React.ReactNode) => (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950">
-      <div className="min-h-full flex items-start md:items-center justify-center px-4 py-10">
-        <div className="w-full max-w-3xl">{children}</div>
-      </div>
+    <div className="min-h-full flex items-start md:items-center justify-center px-4 py-10">
+      <div className="w-full max-w-3xl">{children}</div>
     </div>
   )
+  const card = 'bg-gray-800/90 backdrop-blur-sm border border-gray-700 rounded-2xl shadow-2xl'
 
-  if (loading && !info) return shell(<p className="text-slate-400 text-center flex items-center justify-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</p>)
-  if (loadError || !info) return shell(<p className="text-slate-300 text-center">{loadError || 'This booking page isn\'t available.'}</p>)
+  if (loading && !info) return shell(<p className="text-gray-300 text-center flex items-center justify-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</p>)
+  if (loadError || !info) return shell(<div className={`${card} p-8 text-center text-gray-300`}>{loadError || 'This booking page isn\'t available.'}</div>)
 
   const header = (
-    <div className="mb-6">
+    <div className="mb-6 flex items-start gap-4">
+      <div
+        className="neon-breathe w-12 h-12 shrink-0 rounded-full bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center"
+        style={{ '--glow-color': '#22d3ee' } as React.CSSProperties}
+      >
+        <CalendarDays className="w-6 h-6 text-white" />
+      </div>
+      <div className="min-w-0">
       <p className="text-cyan-300 text-sm font-medium">{info.business}</p>
-      <h1 className="text-white text-2xl md:text-3xl font-bold mt-1">{info.title}</h1>
-      <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 text-sm text-slate-400">
+      <h1 className="text-white text-2xl md:text-3xl font-bold mt-0.5">{info.title}</h1>
+      <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 text-sm text-gray-400">
         <span className="flex items-center gap-1.5"><Clock className="w-4 h-4" /> {info.duration_minutes} minutes</span>
         {info.hosts.length > 0 && <span>With {info.hosts.join(' & ')}</span>}
         <span className="flex items-center gap-1.5"><Globe className="w-4 h-4" /> Times shown in {visitorTz.replace(/_/g, ' ')}</span>
       </div>
-      {info.description && <p className="text-slate-300 text-sm mt-4 whitespace-pre-wrap">{info.description}</p>}
+      {info.description && <p className="text-gray-300 text-sm mt-4 whitespace-pre-wrap">{info.description}</p>}
+      </div>
     </div>
   )
 
   if (booked) {
     return shell(
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 text-center">
+      <div className={`${card} p-8 text-center`}>
         <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
         <h1 className="text-white text-2xl font-bold mt-4">You&apos;re booked</h1>
-        <p className="text-slate-300 mt-2">{info.title}{info.hosts.length ? ` with ${info.hosts.join(' & ')}` : ''}</p>
+        <p className="text-gray-300 mt-2">{info.title}{info.hosts.length ? ` with ${info.hosts.join(' & ')}` : ''}</p>
         <p className="text-white text-lg font-medium mt-4">{fmtLong(booked)}</p>
-        <p className="text-slate-500 text-sm mt-6">We&apos;ll reach out at the phone number you gave if anything changes.</p>
+        <p className="text-gray-500 text-sm mt-6">We&apos;ll reach out at the phone number you gave if anything changes.</p>
       </div>
     )
   }
 
   return shell(
-    <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 md:p-8">
+    <div className={`${card} p-6 md:p-8`}>
       {header}
 
       {slots.length === 0 ? (
-        <p className="text-slate-400 bg-slate-800/60 rounded-lg p-4">No open times right now. Please check back soon.</p>
+        <p className="text-gray-400 bg-gray-900/70 border border-gray-700 rounded-lg p-4">No open times right now. Please check back soon.</p>
       ) : !chosen ? (
         <>
           <div className="flex items-center gap-2 mb-3">
-            <CalendarDays className="w-4 h-4 text-slate-400" />
-            <p className="text-slate-200 text-sm font-medium">Pick a day</p>
+            <CalendarDays className="w-4 h-4 text-gray-400" />
+            <p className="text-gray-200 text-sm font-medium">Pick a day</p>
             <div className="ml-auto flex gap-1">
-              <button aria-label="Earlier days" onClick={() => setWeekStart(w => Math.max(0, w - 7))} disabled={weekStart === 0} className="p-1.5 rounded-md bg-slate-800 text-slate-300 disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
-              <button aria-label="Later days" onClick={() => setWeekStart(w => w + 7)} disabled={weekStart + 7 >= days.length} className="p-1.5 rounded-md bg-slate-800 text-slate-300 disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
+              <button aria-label="Earlier days" onClick={() => setWeekStart(w => Math.max(0, w - 7))} disabled={weekStart === 0} className="p-1.5 rounded-md bg-gray-900 border border-gray-700 text-gray-300 hover:text-white disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
+              <button aria-label="Later days" onClick={() => setWeekStart(w => w + 7)} disabled={weekStart + 7 >= days.length} className="p-1.5 rounded-md bg-gray-900 border border-gray-700 text-gray-300 hover:text-white disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
             </div>
           </div>
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2 mb-6">
@@ -154,21 +163,22 @@ export default function BookingPage() {
                 <button
                   key={k}
                   onClick={() => setDay(k)}
-                  className={`rounded-lg border px-2 py-2.5 text-center transition-colors ${day === k ? 'border-cyan-400 bg-cyan-950/60 text-white' : 'border-slate-700 bg-slate-800/60 text-slate-300 hover:border-slate-500'}`}
+                  className={`rounded-lg border px-2 py-2.5 text-center transition-colors ${day === k ? 'neon-sweep border-cyan-400 bg-cyan-600 text-white' : 'border-gray-700 bg-gray-900/70 text-gray-300 hover:border-gray-500'}`}
+                  style={day === k ? ({ '--glow-color': '#22d3ee' } as React.CSSProperties) : undefined}
                 >
                   <p className="text-xs uppercase tracking-wide">{d.toLocaleDateString([], { weekday: 'short' })}</p>
                   <p className="text-lg font-semibold">{d.getDate()}</p>
-                  <p className="text-[11px] text-slate-500">{d.toLocaleDateString([], { month: 'short' })}</p>
+                  <p className={`text-[11px] ${day === k ? 'text-cyan-100' : 'text-gray-500'}`}>{d.toLocaleDateString([], { month: 'short' })}</p>
                 </button>
               )
             })}
           </div>
           {day && (
             <>
-              <p className="text-slate-200 text-sm font-medium mb-3">Pick a time</p>
+              <p className="text-gray-200 text-sm font-medium mb-3">Pick a time</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {(byDay.get(day) ?? []).map(s => (
-                  <button key={s} onClick={() => { setChosen(s); setError('') }} className="rounded-lg border border-slate-700 bg-slate-800/60 hover:border-cyan-400 hover:text-white text-slate-200 py-2.5 text-sm font-medium transition-colors">
+                  <button key={s} onClick={() => { setChosen(s); setError('') }} className="rounded-lg border border-gray-700 bg-gray-900/70 hover:border-cyan-400 hover:bg-cyan-950/40 hover:text-white text-gray-200 py-2.5 text-sm font-medium transition-colors">
                     {fmtTime(s)}
                   </button>
                 ))}
@@ -178,7 +188,7 @@ export default function BookingPage() {
         </>
       ) : (
         <form onSubmit={submit} className="space-y-4">
-          <div className="flex items-center justify-between bg-slate-800/60 border border-slate-700 rounded-lg px-4 py-3">
+          <div className="flex items-center justify-between bg-gray-900/70 border border-gray-700 rounded-lg px-4 py-3">
             <p className="text-white text-sm font-medium">{fmtLong(chosen)}</p>
             <button type="button" onClick={() => setChosen(null)} className="text-cyan-300 text-sm hover:underline">Change</button>
           </div>
@@ -188,12 +198,17 @@ export default function BookingPage() {
             <Field label="Phone" type="tel" value={form.phone} onChange={v => setForm(f => ({ ...f, phone: v }))} autoComplete="tel" required />
           </div>
           <div>
-            <label className="text-slate-400 text-xs block mb-1">Anything we should know? (optional)</label>
-            <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} className="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-cyan-500 resize-none" />
+            <label className="text-gray-400 text-xs block mb-1">Anything we should know? (optional)</label>
+            <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} className="w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-cyan-500 resize-none" />
           </div>
           <input type="text" name="website" tabIndex={-1} autoComplete="off" value={form.website} onChange={e => setForm(f => ({ ...f, website: e.target.value }))} className="hidden" aria-hidden="true" />
           {error && <p className="text-red-400 text-sm">{error}</p>}
-          <button type="submit" disabled={submitting} className="w-full py-3 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2">
+          <button
+            type="submit"
+            disabled={submitting}
+            className={`w-full py-3 bg-gradient-to-r from-cyan-600 to-purple-600 hover:opacity-90 disabled:opacity-50 text-white font-semibold rounded-lg transition-opacity flex items-center justify-center gap-2 ${submitting ? '' : 'neon-orbit'}`}
+            style={{ '--glow-color': '#22d3ee', '--glow-color-2': '#a78bfa' } as React.CSSProperties}
+          >
             {submitting && <Loader2 className="w-4 h-4 animate-spin" />} Confirm booking
           </button>
         </form>
@@ -205,8 +220,8 @@ export default function BookingPage() {
 function Field({ label, value, onChange, type = 'text', autoComplete, required }: { label: string; value: string; onChange: (v: string) => void; type?: string; autoComplete?: string; required?: boolean }) {
   return (
     <div>
-      <label className="text-slate-400 text-xs block mb-1">{label}</label>
-      <input type={type} value={value} onChange={e => onChange(e.target.value)} autoComplete={autoComplete} required={required} className="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-cyan-500" />
+      <label className="text-gray-400 text-xs block mb-1">{label}</label>
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} autoComplete={autoComplete} required={required} className="w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-cyan-500" />
     </div>
   )
 }

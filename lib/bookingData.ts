@@ -11,10 +11,11 @@ export interface BookingPage extends BookingRules {
   title: string
   description: string | null
   event_type: string
+  max_slots_per_day: number | null
   enabled: boolean
 }
 
-export const PAGE_COLUMNS = 'id, tenant_id, calendar_id, slug, title, description, event_type, duration_minutes, buffer_minutes, min_notice_minutes, max_days_ahead, timezone, weekly_hours, enabled'
+export const PAGE_COLUMNS = 'id, tenant_id, calendar_id, slug, title, description, event_type, duration_minutes, buffer_minutes, min_notice_minutes, max_days_ahead, timezone, weekly_hours, max_slots_per_day, enabled'
 
 export async function loadPublicPage(db: Db, tenantSlug: string, pageSlug: string) {
   const { data: tenant } = await db.from('tenants').select('id, name').eq('slug', tenantSlug).maybeSingle()

@@ -20,6 +20,7 @@ interface BookingPageRow {
   max_days_ahead: number
   timezone: string
   weekly_hours: WeeklyHours
+  max_slots_per_day: number | null
   enabled: boolean
 }
 
@@ -148,6 +149,7 @@ function CalendarCard({ cal, tenantSlug, agentId, onSaved }: { cal: CalendarRow;
         <p className="text-gray-500 text-xs mt-2 flex items-center gap-1.5">
           <CalendarDays className="w-3.5 h-3.5" />
           {page.duration_minutes} min · {Object.keys(page.weekly_hours).sort().map(d => DAYS[Number(d)]).join(', ') || 'no days set'} · {page.timezone.replace('America/', '').replace(/_/g, ' ')}
+          {page.max_slots_per_day ? ` · max ${page.max_slots_per_day} times/day` : ''}
         </p>
       )}
       {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
@@ -167,6 +169,7 @@ function PageEditor({ page, busy, onSave }: { page: BookingPageRow; busy: boolea
     min_notice_hours: Math.round(page.min_notice_minutes / 60),
     max_days_ahead: page.max_days_ahead,
     timezone: page.timezone,
+    max_slots_per_day: page.max_slots_per_day,
     enabled: page.enabled,
   })
   const [hours, setHours] = useState<WeeklyHours>(page.weekly_hours)
@@ -205,6 +208,11 @@ function PageEditor({ page, busy, onSave }: { page: BookingPageRow; busy: boolea
           <select className={inputCls} value={f.timezone} onChange={e => setF({ ...f, timezone: e.target.value })}>{TIMEZONES.map(z => <option key={z} value={z}>{z.replace('America/', '').replace('Pacific/', '').replace(/_/g, ' ')}</option>)}</select></div>
         <div><label className={labelCls}>Minimum notice</label>
           <select className={inputCls} value={f.min_notice_hours} onChange={e => setF({ ...f, min_notice_hours: Number(e.target.value) })}>{[0, 1, 2, 4, 12, 24, 48].map(h => <option key={h} value={h}>{h ? `${h} hr` : 'None'}</option>)}</select></div>
+        <div><label className={labelCls}>Times shown per day</label>
+          <select className={inputCls} value={f.max_slots_per_day ?? ''} onChange={e => setF({ ...f, max_slots_per_day: e.target.value ? Number(e.target.value) : null })}>
+            <option value="">All open times</option>
+            {[1, 2, 3, 4, 5, 6, 8].map(n => <option key={n} value={n}>{n} (limited)</option>)}
+          </select></div>
         <div><label className={labelCls}>Book up to</label>
           <select className={inputCls} value={f.max_days_ahead} onChange={e => setF({ ...f, max_days_ahead: Number(e.target.value) })}>{[7, 14, 30, 60, 90].map(d => <option key={d} value={d}>{d} days ahead</option>)}</select></div>
       </div>
@@ -235,7 +243,7 @@ function PageEditor({ page, busy, onSave }: { page: BookingPageRow; busy: boolea
           title: f.title, slug: f.slug, description: f.description, event_type: f.event_type,
           duration_minutes: f.duration_minutes, buffer_minutes: f.buffer_minutes,
           min_notice_minutes: f.min_notice_hours * 60, max_days_ahead: f.max_days_ahead,
-          timezone: f.timezone, weekly_hours: hours, enabled: f.enabled,
+          timezone: f.timezone, weekly_hours: hours, max_slots_per_day: f.max_slots_per_day, enabled: f.enabled,
         })}
         className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg"
       >
