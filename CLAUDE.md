@@ -34,7 +34,7 @@ There is **no other app sharing this Supabase project** today. (Older notes desc
 - **Super admin (platform admin):** `agents.is_platform_admin = true`. Currently only the Apex account (`jordan@apexdevelopmentandmarketing.com`, tenant "Apex Development & Marketing"). Sees **Admin → Clients** (`/admin/tenants`): create clients, toggle each client's visible pages (`tenants.hidden_features`).
 - **Client admin:** `role = 'admin'` within a tenant — sees that tenant's admin pages only.
 - **Agent:** `role = 'agent'`.
-- Planned: a super-admin account switcher to open any client account from the Apex login (server-side auth, below, is the prerequisite).
+- **Account switcher (platform admin only):** the arrow next to the sidebar logo lists every account; picking one works inside it from the admin's own login, with an amber banner and *Back to my account*. See the auth section for how it's enforced.
 
 ## Auth — how API requests are verified
 - Login (`app/login`) uses `supabase.auth.signInWithPassword`, then loads the `agents` row into React context + `localStorage` (8-hour expiry) and sets HttpOnly cookies via `/api/auth/session`.
@@ -42,6 +42,7 @@ There is **no other app sharing this Supabase project** today. (Older notes desc
 - `proxy.ts` (Next 16's middleware) runs on every `/api/*` request: it strips any incoming `x-caller-*` headers, verifies the token with `supabase.auth.getUser`, loads the `agents` row (30 s cache), and passes `x-caller-id / -tenant / -role / -platform-admin` to the route. It also enforces `/api/admin/*` = admin (except `GET /api/admin/tags`) and `/api/platform/*` = platform admin.
 - Public (no token): `/api/webhooks/*`, `/api/book/*`, `/api/reminders/dispatch`, `/api/reports/dispatch`, `/api/auth/session` — listed in `lib/callerHeaders.ts`.
 - **In routes, identity and tenant come only from `getCaller()` (`lib/caller.ts`)** — never from an `agent_id`/`tenant_id` in the body or query. Every update/delete by id must also filter `.eq('tenant_id', caller.tenantId)`. `getAgentTenantId()` returns the caller's tenant when there is one and only looks up the given agent for webhooks/jobs.
+- **Switched account:** while the platform admin has switched into a client (`lib/actAs.ts`, localStorage `dialer_act_as`), the browser sends `x-act-as-tenant`. `proxy.ts` honors it only for platform admins and only for an existing tenant (anyone else gets 403 `act_as_invalid`). Routes then see `caller.tenantId` = the client and `caller.homeTenantId` = the admin's own, with `caller.actingAs = true`. Personal actions refuse with `switchedAccount()` while switched (placing calls, preflight, predictive Start, scheduling an event for yourself); handling the admin's *own* calls (answer/end/disposition) uses `homeTenantId`. Switches are logged by `POST /api/platform/act-as`.
 
 ## Multi-tenancy
 - `tenants` table; almost every table has `tenant_id` (default = SwiftPath's id for legacy rows).

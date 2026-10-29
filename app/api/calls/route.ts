@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { getCaller, isAdmin, unauthorized } from '@/lib/caller'
+import { getCaller, isAdmin, unauthorized, switchedAccount } from '@/lib/caller'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -64,7 +64,9 @@ export async function PATCH(req: NextRequest) {
   const caller = await getCaller()
   if (!caller) return unauthorized()
   const db = createServerClient()
-  const tenantId = caller.tenantId
+  // The softphone keeps handling the caller's own calls while they're switched into another
+  // account, so these always act on their home tenant.
+  const tenantId = caller.homeTenantId
 
   // When an agent answers an inbound call, attribute it to them
   if (body.action === 'answer') {
@@ -224,6 +226,7 @@ export async function POST(req: NextRequest) {
   const caller = await getCaller()
   if (!caller) return unauthorized()
   const db = createServerClient()
+  if (caller.actingAs) return switchedAccount()
   const tenantId = caller.tenantId
 
   const { data, error } = await db

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { getCaller, isAdmin, agentInTenant, unauthorized, forbidden, type Caller } from '@/lib/caller'
+import { getCaller, isAdmin, agentInTenant, unauthorized, forbidden, switchedAccount, type Caller } from '@/lib/caller'
 
 type Db = ReturnType<typeof createServerClient>
 
@@ -70,6 +70,9 @@ export async function POST(req: NextRequest) {
   if (body.agent_id && body.agent_id !== caller.id) {
     if (!isAdmin(caller) || !(await agentInTenant(db, body.agent_id, tenantId))) return forbidden()
     agent_id = body.agent_id
+  } else if (caller.actingAs) {
+    // The platform admin isn't a member of the account they switched into; schedule for one of its agents.
+    return switchedAccount()
   }
 
   // Tasks aren't necessarily tied to a phone number; every other event type needs one.
