@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
+import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
 
 function last10(raw: string | null | undefined) {
   return (raw || '').replace(/\D/g, '').slice(-10)
@@ -13,10 +14,10 @@ export async function GET(req: NextRequest) {
   if (!key) return NextResponse.json({ error: 'number is required' }, { status: 400 })
 
   const db = createServerClient()
-  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
+  const tenantId = await getAgentTenantId(db, agentId)
 
   let convosQuery = db.from('sms_conversations').select('id, contact_number, our_number')
-  if (tenantId) convosQuery = convosQuery.eq('tenant_id', tenantId)
+  convosQuery = convosQuery.eq('tenant_id', tenantId ?? NO_TENANT)
   const { data: convos } = await convosQuery
   const convo = (convos || []).find(c => last10(c.contact_number) === key) || null
 

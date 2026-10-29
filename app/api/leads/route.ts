@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
+import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function applyLeadFilters(db: any, query: any, opts: {
@@ -11,7 +12,7 @@ async function applyLeadFilters(db: any, query: any, opts: {
 }): Promise<any> {
   const { agentId, phone, search, tenantId } = opts
 
-  if (tenantId) query = query.eq('tenant_id', tenantId)
+  query = query.eq('tenant_id', tenantId ?? NO_TENANT)
 
   if (phone) {
     query = query.ilike('phone', `%${phone}%`)
@@ -38,7 +39,7 @@ async function applyLeadFilters(db: any, query: any, opts: {
 
       // Filter by enabled lead sources when loading the dialer queue
       let sourcesQuery = db.from('lead_sources').select('name').eq('enabled', true)
-      if (tenantId) sourcesQuery = sourcesQuery.eq('tenant_id', tenantId)
+      sourcesQuery = sourcesQuery.eq('tenant_id', tenantId ?? NO_TENANT)
       const { data: sourceRows } = await sourcesQuery
 
       const activeSources = (sourceRows ?? []).map((r: { name: string }) => r.name)
@@ -68,7 +69,7 @@ export async function GET(req: NextRequest) {
   const countOnly = searchParams.get('count') === '1'
 
   const db = createServerClient()
-  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
+  const tenantId = await getAgentTenantId(db, agentId)
   const filterOpts = { agentId, phone, search, tenantId }
 
   if (countOnly) {
@@ -117,7 +118,7 @@ export async function PATCH(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const db = createServerClient()
-  const tenantId = body.agent_id ? await getAgentTenantId(db, body.agent_id) : null
+  const tenantId = await getAgentTenantId(db, body.agent_id)
 
   const { data, error } = await db
     .from('leads')

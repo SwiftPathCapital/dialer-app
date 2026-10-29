@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
+import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
 import { sendSms } from '@/lib/sms'
 
 export async function GET(req: NextRequest) {
@@ -20,9 +21,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(data)
   }
 
-  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
+  const tenantId = await getAgentTenantId(db, agentId)
   let query = db.from('sms_conversations').select('*').order('last_message_at', { ascending: false })
-  if (tenantId) query = query.eq('tenant_id', tenantId)
+  query = query.eq('tenant_id', tenantId ?? NO_TENANT)
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

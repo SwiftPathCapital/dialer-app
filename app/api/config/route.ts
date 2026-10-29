@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
+import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
 
 const ALLOWED_KEYS = [
   'telnyx_api_key', 'telnyx_public_key', 'telnyx_sip_connection_id', 'app_url',
@@ -13,10 +14,10 @@ export async function GET(req: NextRequest) {
   const agentId = searchParams.get('agent_id')
 
   const db = createServerClient()
-  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
+  const tenantId = await getAgentTenantId(db, agentId)
 
   let query = db.from('app_config').select('key, value, updated_at').in('key', ALLOWED_KEYS)
-  if (tenantId) query = query.eq('tenant_id', tenantId)
+  query = query.eq('tenant_id', tenantId ?? NO_TENANT)
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const { agent_id, ...body }: Record<string, string> = await req.json()
   const db = createServerClient()
-  const tenantId = agent_id ? await getAgentTenantId(db, agent_id) : null
+  const tenantId = await getAgentTenantId(db, agent_id)
 
   const updates = Object.entries(body)
     .filter(([key]) => ALLOWED_KEYS.includes(key))

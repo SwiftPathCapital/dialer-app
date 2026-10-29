@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { getAgentTenantId, agentInTenant } from '@/lib/caller'
+
+type Db = ReturnType<typeof createServerClient>
+
+// Both the calendar and the agent must belong to the caller's tenant.
+async function guard(db: Db, calendarId: string, agentId: string) {
+  const tenantId = await getAgentTenantId(db)
+  if (!tenantId) return { error: NextResponse.json({ error: 'Unknown account' }, { status: 400 }) }
+  const { data: cal } = await db.from('calendars').select('id, type, owner_agent_id').eq('id', calendarId).eq('tenant_id', tenantId).maybeSingle()
+  if (!cal) return { error: NextResponse.json({ error: 'Calendar not found' }, { status: 404 }) }
+  if (!(await agentInTenant(db, agentId, tenantId))) return { error: NextResponse.json({ error: 'That person isn\'t in your account' }, { status: 400 }) }
+  return { cal }
+}
 
 // Add (or update can_edit on) a calendar member.
 export async function POST(req: NextRequest) {
@@ -9,6 +22,9 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerClient()
+  const g = await guard(db, calendar_id, agent_id)
+  if (g.error) return g.error
+
   const { data, error } = await db
     .from('calendar_members')
     .upsert({ calendar_id, agent_id, can_edit: can_edit ?? true }, { onConflict: 'calendar_id,agent_id' })
@@ -27,6 +43,9 @@ export async function PATCH(req: NextRequest) {
   }
 
   const db = createServerClient()
+  const g = await guard(db, calendar_id, agent_id)
+  if (g.error) return g.error
+
   const { data, error } = await db
     .from('calendar_members')
     .update({ can_edit: !!can_edit })
@@ -48,8 +67,9 @@ export async function DELETE(req: NextRequest) {
   }
 
   const db = createServerClient()
-  const { data: cal } = await db.from('calendars').select('type, owner_agent_id').eq('id', calendarId).single()
-  if (cal?.type === 'personal' && cal.owner_agent_id === agentId) {
+  const g = await guard(db, calendarId, agentId)
+  if (g.error) return g.error
+  if (g.cal.type === 'personal' && g.cal.owner_agent_id === agentId) {
     return NextResponse.json({ error: "Can't remove the owner from their own personal calendar" }, { status: 400 })
   }
 

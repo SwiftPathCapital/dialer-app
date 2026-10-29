@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { getCaller, isAdmin } from '@/lib/caller'
 import { isValidTimeZone, slugify, validateWeeklyHours, validateFeaturedTimes } from '@/lib/booking'
 import { PAGE_COLUMNS } from '@/lib/bookingData'
 
 type Db = ReturnType<typeof createServerClient>
 
-async function requireAdmin(db: Db, agentId: string | null | undefined) {
-  if (!agentId) return null
-  const { data } = await db.from('agents').select('id, tenant_id, role, is_platform_admin').eq('id', agentId).maybeSingle()
-  if (!data || (data.role !== 'admin' && !data.is_platform_admin)) return null
-  return data as { id: string; tenant_id: string }
+// The signed-in admin (agent ids sent by the browser are ignored).
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function requireAdmin(_db: Db, _agentId?: string | null) {
+  const caller = await getCaller()
+  if (!caller || !isAdmin(caller)) return null
+  return { id: caller.id, tenant_id: caller.tenantId }
 }
 
 // Every calendar in the admin's account, with its booking page if it has one.

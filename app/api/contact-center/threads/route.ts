@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
+import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
 
 function last10(raw: string | null | undefined) {
   return (raw || '').replace(/\D/g, '').slice(-10)
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
   const agentId = searchParams.get('agent_id')
 
   const db = createServerClient()
-  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
+  const tenantId = await getAgentTenantId(db, agentId)
 
   let convosQuery = db.from('sms_conversations').select('id, contact_number, our_number, last_message_at, tenant_id')
   let callsQuery = db.from('dialer_calls')
@@ -92,7 +93,7 @@ export async function GET(req: NextRequest) {
       .from('leads')
       .select('id, first_name, last_name, name, company_name, phone')
       .or(orFilter)
-    if (tenantId) leadsQuery = leadsQuery.eq('tenant_id', tenantId)
+    leadsQuery = leadsQuery.eq('tenant_id', tenantId ?? NO_TENANT)
     const { data: leads } = await leadsQuery
 
     for (const lead of leads || []) {

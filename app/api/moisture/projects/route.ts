@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
+import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -7,14 +8,14 @@ export async function GET(req: NextRequest) {
   const leadId = searchParams.get('lead_id')
 
   const db = createServerClient()
-  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
+  const tenantId = await getAgentTenantId(db, agentId)
 
   let query = db
     .from('moisture_projects')
     .select('id, lead_id, name, status, floor_plan_type, floor_plan_image_url, created_at, updated_at, lead:leads(id, name, first_name, last_name, company_name, phone)')
     .order('updated_at', { ascending: false })
 
-  if (tenantId) query = query.eq('tenant_id', tenantId)
+  query = query.eq('tenant_id', tenantId ?? NO_TENANT)
   if (leadId) query = query.eq('lead_id', leadId)
 
   const { data: projects, error } = await query
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerClient()
-  const tenantId = agent_id ? await getAgentTenantId(db, agent_id) : null
+  const tenantId = await getAgentTenantId(db, agent_id)
   if (!tenantId) return NextResponse.json({ error: 'agent_id is required' }, { status: 400 })
 
   const { data, error } = await db

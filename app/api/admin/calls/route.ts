@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
+import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
 
 export async function PATCH(req: NextRequest) {
   const { id, disposition, notes } = await req.json()
   const db = createServerClient()
+  const tenantId = await getAgentTenantId(db)
   const { error } = await db
     .from('dialer_calls')
     .update({ disposition: disposition ?? null, notes: notes ?? null })
     .eq('id', id)
+    .eq('tenant_id', tenantId ?? NO_TENANT)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
@@ -19,7 +22,7 @@ export async function GET(req: NextRequest) {
   const limit = parseInt(searchParams.get('limit') || '200')
 
   const db = createServerClient()
-  const tenantId = requesterId ? await getAgentTenantId(db, requesterId) : null
+  const tenantId = await getAgentTenantId(db, requesterId)
 
   // When filtering by agent, also include inbound group calls for their groups
   let groupIds: string[] = []
@@ -38,7 +41,7 @@ export async function GET(req: NextRequest) {
     .order('started_at', { ascending: false })
     .limit(limit)
 
-  if (tenantId) query = query.eq('tenant_id', tenantId)
+  query = query.eq('tenant_id', tenantId ?? NO_TENANT)
 
   if (agentId && groupIds.length > 0) {
     query = query.or(`agent_id.eq.${agentId},group_id.in.(${groupIds.join(',')})`)
@@ -70,7 +73,7 @@ export async function GET(req: NextRequest) {
       .from('leads')
       .select('id, first_name, last_name, name, company_name, phone')
       .or(orFilter)
-    if (tenantId) leadsQuery = leadsQuery.eq('tenant_id', tenantId)
+    leadsQuery = leadsQuery.eq('tenant_id', tenantId ?? NO_TENANT)
     const { data: leads } = await leadsQuery
 
     for (const lead of leads || []) {
