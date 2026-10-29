@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock, CalendarDays, List, Tag, Orbit, Building2, Droplets, Contact, QrCode, Workflow, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock, CalendarDays, List, Tag, Orbit, Building2, Droplets, Contact, QrCode, Workflow, ChevronLeft, ChevronRight, Link2 } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import { supabase } from '@/lib/supabase'
 import Tour from '@/components/Tour'
@@ -30,6 +30,7 @@ const ADMIN_NAV = [
   { href: '/admin/calls',      icon: PhoneCall,          label: 'Call Center',dataTour: 'nav-calls', emoji: '🎧' },
   { href: '/admin/callbacks',  icon: CalendarClock,      label: 'Callbacks',  dataTour: '', emoji: '🔔' },
   { href: '/admin/calendars',  icon: CalendarDays,       label: 'Calendars',  dataTour: '', emoji: '🗓️' },
+  { href: '/admin/booking',    icon: Link2,              label: 'Booking Pages', dataTour: '', emoji: '🔗' },
   { href: '/admin/workflows',  icon: Workflow,           label: 'Workflows',  dataTour: '', emoji: '🔀' },
   { href: '/admin/groups',     icon: Users,              label: 'Groups',     dataTour: 'nav-groups', emoji: '🌐' },
   { href: '/admin/tags',       icon: Tag,                label: 'Tags',       dataTour: '', emoji: '🏷️' },
@@ -141,6 +142,9 @@ export default function Sidebar() {
   function logout() {
     setAgent(null)
   }
+
+  // Public booking pages are for the dialer's customers, not agents.
+  if (pathname.startsWith('/book/')) return null
 
   // Tenant-level hides are a baseline every agent in that tenant inherits, on top of
   // whatever an admin has hidden for that specific agent.
