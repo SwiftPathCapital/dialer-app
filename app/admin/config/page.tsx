@@ -155,7 +155,7 @@ export default function ConfigPage() {
 
   async function loadStatus() {
     setLoading(true)
-    const res = await fetch(`/api/config${agent ? `?agent_id=${agent.id}` : ''}`)
+    const res = await fetch('/api/config')
     const data = await res.json()
     setStatus(data)
     setLoading(false)
@@ -263,11 +263,17 @@ export default function ConfigPage() {
     }
 
     if (Object.keys(payload).length > 0) {
-      await fetch('/api/config', {
+      const res = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, agent_id: agent?.id }),
+        body: JSON.stringify(payload),
       })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error || 'Could not save settings.')
+        setSaving(prev => ({ ...prev, [sectionKey]: false }))
+        return
+      }
     }
 
     // Clear the input values and refresh status

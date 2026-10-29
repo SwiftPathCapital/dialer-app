@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
+import { getCaller, isAdmin, agentInTenant, unauthorized, forbidden } from '@/lib/caller'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function applyLeadFilters(db: any, query: any, opts: {
   agentId: string | null
   phone: string
   search: string
-  tenantId: string | null
+  tenantId: string
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }): Promise<any> {
   const { agentId, phone, search, tenantId } = opts
 
-  query = query.eq('tenant_id', tenantId ?? NO_TENANT)
+  query = query.eq('tenant_id', tenantId)
 
   if (phone) {
     query = query.ilike('phone', `%${phone}%`)
@@ -22,7 +22,10 @@ async function applyLeadFilters(db: any, query: any, opts: {
     // below (DNC, cooldown, assignment, enabled sources) since those describe "who's
     // next to call," not "does this contact exist." A DNC'd or already-called contact
     // should still be findable by name/phone.
-    query = query.or(`company_name.ilike.%${search}%,name.ilike.%${search}%,phone.ilike.%${search}%`)
+    // Commas, parens and quotes are PostgREST filter syntax — strip them so a search can't
+    // add its own conditions to the or() list.
+    const term = search.replace(/[,()"'\\]/g, ' ').trim()
+    if (term) query = query.or(`company_name.ilike.%${term}%,name.ilike.%${term}%,phone.ilike.%${term}%`)
   } else {
     if (agentId) {
       // Agents with can_view_all_leads see the full pool; others only their
@@ -39,7 +42,7 @@ async function applyLeadFilters(db: any, query: any, opts: {
 
       // Filter by enabled lead sources when loading the dialer queue
       let sourcesQuery = db.from('lead_sources').select('name').eq('enabled', true)
-      sourcesQuery = sourcesQuery.eq('tenant_id', tenantId ?? NO_TENANT)
+      sourcesQuery = sourcesQuery.eq('tenant_id', tenantId)
       const { data: sourceRows } = await sourcesQuery
 
       const activeSources = (sourceRows ?? []).map((r: { name: string }) => r.name)
@@ -62,14 +65,17 @@ async function applyLeadFilters(db: any, query: any, opts: {
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const agentId = searchParams.get('agent_id')
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  // agent_id switches on "dialer queue" mode; the queue is always the signed-in agent's own.
+  const agentId = searchParams.get('agent_id') ? caller.id : null
   const phone = searchParams.get('phone') || ''
   const search = searchParams.get('search') || ''
-  const limit = parseInt(searchParams.get('limit') || '100')
+  const limit = Math.min(parseInt(searchParams.get('limit') || '100') || 100, 1000)
   const countOnly = searchParams.get('count') === '1'
 
   const db = createServerClient()
-  const tenantId = await getAgentTenantId(db, agentId)
+  const tenantId = caller.tenantId
   const filterOpts = { agentId, phone, search, tenantId }
 
   if (countOnly) {
@@ -107,18 +113,32 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
   const body = await req.json()
   const { id, ...updates } = body
+  delete updates.tenant_id
+  delete updates.created_at
+  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
   const db = createServerClient()
-  const { error } = await db.from('leads').update(updates).eq('id', id)
+
+  // Reassigning a lead is an admin action, and only to someone in the same account.
+  if ('assigned_to' in updates && updates.assigned_to !== null) {
+    if (!isAdmin(caller)) return forbidden()
+    if (!(await agentInTenant(db, updates.assigned_to, caller.tenantId))) return forbidden('That agent is not in this account.')
+  }
+
+  const { data, error } = await db.from('leads').update(updates).eq('id', id).eq('tenant_id', caller.tenantId).select('id')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data?.length) return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
   return NextResponse.json({ ok: true })
 }
 
 export async function POST(req: NextRequest) {
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
   const body = await req.json()
   const db = createServerClient()
-  const tenantId = await getAgentTenantId(db, body.agent_id)
 
   const { data, error } = await db
     .from('leads')
@@ -132,9 +152,9 @@ export async function POST(req: NextRequest) {
       lead_type:      body.lead_source    || null,
       why_funds:      body.notes          || null,
       status:         'New',
-      assigned_to:    body.agent_id       || null,
+      assigned_to:    caller.id,
       created_at:     new Date().toISOString(),
-      ...(tenantId ? { tenant_id: tenantId } : {}),
+      tenant_id:      caller.tenantId,
     })
     .select()
     .single()

@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
+import { getCaller, unauthorized } from '@/lib/caller'
 
 function last10(raw: string | null | undefined) {
   return (raw || '').replace(/\D/g, '').slice(-10)
@@ -15,29 +15,26 @@ interface ThreadAcc {
   last_call: { direction: string; status: string; duration_seconds: number | null; at: string } | null
 }
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const agentId = searchParams.get('agent_id')
-
+export async function GET() {
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  const tenantId = caller.tenantId
   const db = createServerClient()
-  const tenantId = await getAgentTenantId(db, agentId)
 
-  let convosQuery = db.from('sms_conversations').select('id, contact_number, our_number, last_message_at, tenant_id')
-  let callsQuery = db.from('dialer_calls')
-    .select('id, direction, from_number, to_number, status, duration_seconds, started_at')
-    .not('telnyx_call_control_id', 'is', null)
-    .order('started_at', { ascending: false })
-    .limit(1000)
-  if (tenantId) {
-    convosQuery = convosQuery.eq('tenant_id', tenantId)
-    callsQuery = callsQuery.eq('tenant_id', tenantId)
-  }
-
-  const [{ data: convos }, { data: calls }, { data: messages }] = await Promise.all([
-    convosQuery,
-    callsQuery,
-    db.from('sms_messages').select('conversation_id, body, direction, sent_at').order('sent_at', { ascending: false }),
+  const [{ data: convos }, { data: calls }] = await Promise.all([
+    db.from('sms_conversations').select('id, contact_number, our_number, last_message_at, tenant_id').eq('tenant_id', tenantId),
+    db.from('dialer_calls')
+      .select('id, direction, from_number, to_number, status, duration_seconds, started_at')
+      .not('telnyx_call_control_id', 'is', null)
+      .eq('tenant_id', tenantId)
+      .order('started_at', { ascending: false })
+      .limit(1000),
   ])
+  // Only this account's conversations' messages.
+  const convoIds = (convos || []).map(c => c.id)
+  const { data: messages } = convoIds.length
+    ? await db.from('sms_messages').select('conversation_id, body, direction, sent_at').in('conversation_id', convoIds).order('sent_at', { ascending: false })
+    : { data: [] as { conversation_id: string; body: string; direction: string; sent_at: string }[] }
 
   // Most recent message per conversation — messages arrive sorted desc, so the first hit per id wins.
   const lastMsgByConvo = new Map<string, { body: string; direction: string; sent_at: string }>()
@@ -89,12 +86,11 @@ export async function GET(req: NextRequest) {
   let leadsByKey = new Map<string, { id: string; display: string }>()
   if (list.length > 0) {
     const orFilter = list.map(t => `phone.ilike.%${t.key}%`).join(',')
-    let leadsQuery = db
+    const { data: leads } = await db
       .from('leads')
       .select('id, first_name, last_name, name, company_name, phone')
       .or(orFilter)
-    leadsQuery = leadsQuery.eq('tenant_id', tenantId ?? NO_TENANT)
-    const { data: leads } = await leadsQuery
+      .eq('tenant_id', tenantId)
 
     for (const lead of leads || []) {
       const k = last10(lead.phone)
