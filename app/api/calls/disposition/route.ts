@@ -77,6 +77,7 @@ export async function POST(req: NextRequest) {
       await Promise.all([
         // CRM activities log
         db.from('activities').insert({
+          tenant_id: tenantId,
           lead_id,
           agent_id,
           type: 'call',
@@ -86,6 +87,7 @@ export async function POST(req: NextRequest) {
         }),
         // CRM notes section
         db.from('lead_comments').insert({
+          tenant_id: tenantId,
           lead_id,
           agent_id,
           agent_name: agentName,
