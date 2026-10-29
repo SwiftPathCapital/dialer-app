@@ -1,5 +1,5 @@
 import type { createServerClient } from './supabase'
-import { DEFAULT_EVENT_MINUTES, type BookingRules, type Interval, type WeeklyHours } from './booking'
+import { DEFAULT_EVENT_MINUTES, type BookingRules, type Interval, type WeeklyHours, type FeaturedTimes } from './booking'
 
 type Db = ReturnType<typeof createServerClient>
 
@@ -15,7 +15,7 @@ export interface BookingPage extends BookingRules {
   enabled: boolean
 }
 
-export const PAGE_COLUMNS = 'id, tenant_id, calendar_id, slug, title, description, event_type, duration_minutes, buffer_minutes, min_notice_minutes, max_days_ahead, timezone, weekly_hours, max_slots_per_day, enabled'
+export const PAGE_COLUMNS = 'id, tenant_id, calendar_id, slug, title, description, event_type, duration_minutes, buffer_minutes, min_notice_minutes, max_days_ahead, timezone, weekly_hours, max_slots_per_day, featured_times, enabled'
 
 export async function loadPublicPage(db: Db, tenantSlug: string, pageSlug: string) {
   const { data: tenant } = await db.from('tenants').select('id, name').eq('slug', tenantSlug).maybeSingle()
@@ -28,7 +28,7 @@ export async function loadPublicPage(db: Db, tenantSlug: string, pageSlug: strin
     .eq('enabled', true)
     .maybeSingle()
   if (!page) return null
-  return { tenant, page: { ...page, weekly_hours: page.weekly_hours as WeeklyHours } as BookingPage }
+  return { tenant, page: { ...page, weekly_hours: page.weekly_hours as WeeklyHours, featured_times: (page.featured_times as FeaturedTimes | null) ?? null } as BookingPage }
 }
 
 // Everyone who must be free: the calendar's owner (personal) or every member (team).

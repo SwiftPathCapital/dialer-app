@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { isValidTimeZone, slugify, validateWeeklyHours } from '@/lib/booking'
+import { isValidTimeZone, slugify, validateWeeklyHours, validateFeaturedTimes } from '@/lib/booking'
 import { PAGE_COLUMNS } from '@/lib/bookingData'
 
 type Db = ReturnType<typeof createServerClient>
@@ -90,6 +90,14 @@ export async function PUT(req: NextRequest) {
   if (body.max_slots_per_day !== undefined) {
     if (body.max_slots_per_day !== null && !intIn(body.max_slots_per_day, 1, 48)) return NextResponse.json({ error: 'Times per day must be 1–48, or show all' }, { status: 400 })
     row.max_slots_per_day = body.max_slots_per_day
+  }
+  if (body.featured_times !== undefined) {
+    const err = validateFeaturedTimes(body.featured_times)
+    if (err) return NextResponse.json({ error: err }, { status: 400 })
+    const f = body.featured_times as { times: string[]; days: number[] } | null
+    row.featured_times = f && f.times.length && f.days.length
+      ? { times: [...new Set(f.times)].sort(), days: [...new Set(f.days)].sort() }
+      : null
   }
   if (body.enabled !== undefined) {
     if (typeof body.enabled !== 'boolean') return NextResponse.json({ error: 'enabled must be true or false' }, { status: 400 })

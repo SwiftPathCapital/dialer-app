@@ -2,6 +2,8 @@
 
 export type WeeklyHours = Record<string, [string, string][]> // weekday "0"(Sun)–"6" → [["09:00","17:00"], ...]
 
+export interface FeaturedTimes { times: string[]; days: number[] }
+
 export interface BookingRules {
   duration_minutes: number
   buffer_minutes: number
@@ -9,6 +11,7 @@ export interface BookingRules {
   max_days_ahead: number
   timezone: string
   weekly_hours: WeeklyHours
+  featured_times?: FeaturedTimes | null
 }
 
 export interface Interval { start: number; end: number } // epoch ms, end exclusive
@@ -69,6 +72,40 @@ export function validateWeeklyHours(v: unknown): string | null {
 // Every bookable start time, as epoch ms, from `now` through max_days_ahead. A slot is
 // offered only if [start - buffer, start + duration + buffer) is clear of every busy
 // interval and the start is at least min_notice away. Slots step by the meeting length.
+function dayIterator(rules: BookingRules, now: number) {
+  const today = zonedDate(now, rules.timezone)
+  const startDay = Date.UTC(today.y, today.m - 1, today.d)
+  return Array.from({ length: rules.max_days_ahead + 1 }, (_, i) => {
+    const day = new Date(startDay + i * 24 * 60 * MIN)
+    return { y: day.getUTCFullYear(), mo: day.getUTCMonth() + 1, d: day.getUTCDate(), weekday: day.getUTCDay() }
+  })
+}
+
+function isOpen(t: number, rules: BookingRules, busy: Interval[], earliest: number): boolean {
+  if (t < earliest) return false
+  const pad = rules.buffer_minutes * MIN
+  const block = { start: t - pad, end: t + rules.duration_minutes * MIN + pad }
+  return !busy.some(x => x.start < block.end && block.start < x.end)
+}
+
+// The page's "always show" times that are open, as epoch ms.
+export function featuredSlots(rules: BookingRules, busy: Interval[], now = Date.now()): number[] {
+  const f = rules.featured_times
+  if (!f?.times?.length || !f.days?.length) return []
+  const earliest = now + rules.min_notice_minutes * MIN
+  const out: number[] = []
+  for (const { y, mo, d, weekday } of dayIterator(rules, now)) {
+    if (!f.days.includes(weekday)) continue
+    for (const time of f.times) {
+      const t0 = hm(time)
+      if (!t0) continue
+      const t = zonedToUtc(y, mo, d, t0[0], t0[1], rules.timezone)
+      if (isOpen(t, rules, busy, earliest)) out.push(t)
+    }
+  }
+  return out
+}
+
 export function generateSlots(rules: BookingRules, busy: Interval[], now = Date.now()): number[] {
   const out: number[] = []
   const earliest = now + rules.min_notice_minutes * MIN
@@ -120,6 +157,24 @@ export function limitSlotsPerDay(slots: number[], perDay: number | null | undefi
     out.push(...picked)
   }
   return out.sort((a, b) => a - b)
+}
+
+// Everything a visitor can pick: regular slots (thinned to `perDay` when limited) plus the
+// always-show times, de-duplicated and in order.
+export function offeredSlots(rules: BookingRules, busy: Interval[], perDay: number | null | undefined, seed: string, now = Date.now()): number[] {
+  const featured = featuredSlots(rules, busy, now)
+  const featuredSet = new Set(featured)
+  const regular = generateSlots(rules, busy, now).filter(s => !featuredSet.has(s))
+  return [...new Set([...limitSlotsPerDay(regular, perDay, rules.timezone, seed), ...featured])].sort((a, b) => a - b)
+}
+
+export function validateFeaturedTimes(v: unknown): string | null {
+  if (v === null) return null
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return 'Always-show times must be { times, days }'
+  const { times, days } = v as { times?: unknown; days?: unknown }
+  if (!Array.isArray(times) || times.length > 12 || times.some(t => !hm(String(t)))) return 'Always-show times must be up to 12 HH:MM times'
+  if (!Array.isArray(days) || days.some(d => !Number.isInteger(d) || (d as number) < 0 || (d as number) > 6)) return 'Always-show days must be 0–6'
+  return null
 }
 
 export function isSlotAvailable(rules: BookingRules, busy: Interval[], startMs: number, now = Date.now()): boolean {

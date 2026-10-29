@@ -21,6 +21,7 @@ interface BookingPageRow {
   timezone: string
   weekly_hours: WeeklyHours
   max_slots_per_day: number | null
+  featured_times: { times: string[]; days: number[] } | null
   enabled: boolean
 }
 
@@ -150,6 +151,7 @@ function CalendarCard({ cal, tenantSlug, agentId, onSaved }: { cal: CalendarRow;
           <CalendarDays className="w-3.5 h-3.5" />
           {page.duration_minutes} min · {Object.keys(page.weekly_hours).sort().map(d => DAYS[Number(d)]).join(', ') || 'no days set'} · {page.timezone.replace('America/', '').replace(/_/g, ' ')}
           {page.max_slots_per_day ? ` · max ${page.max_slots_per_day} times/day` : ''}
+          {page.featured_times?.times?.length ? ` · always ${page.featured_times.times.map(t => new Date(`2000-01-01T${t}:00`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })).join(' & ')}` : ''}
         </p>
       )}
       {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
@@ -173,6 +175,9 @@ function PageEditor({ page, busy, onSave }: { page: BookingPageRow; busy: boolea
     enabled: page.enabled,
   })
   const [hours, setHours] = useState<WeeklyHours>(page.weekly_hours)
+  const [featTimes, setFeatTimes] = useState<string[]>(page.featured_times?.times ?? [])
+  const [featDays, setFeatDays] = useState<number[]>(page.featured_times?.days ?? [0, 1, 2, 3, 4, 5, 6])
+  const [newFeat, setNewFeat] = useState('18:00')
 
   function toggleDay(d: number) {
     setHours(h => {
@@ -184,9 +189,10 @@ function PageEditor({ page, busy, onSave }: { page: BookingPageRow; busy: boolea
   }
   function setTime(d: number, idx: 0 | 1, v: string) {
     setHours(h => {
-      const w = [...(h[String(d)]?.[0] ?? ['09:00', '17:00'])] as [string, string]
+      const [first, ...rest] = h[String(d)] ?? [['09:00', '17:00']]
+      const w = [...first] as [string, string]
       w[idx] = v
-      return { ...h, [String(d)]: [w] }
+      return { ...h, [String(d)]: [w, ...rest] }
     })
   }
 
@@ -236,6 +242,29 @@ function PageEditor({ page, busy, onSave }: { page: BookingPageRow; busy: boolea
           })}
         </div>
       </div>
+      <div>
+        <label className={labelCls}>Always show these times (when free)</label>
+        <p className="text-gray-500 text-xs mb-2">Shown on top of the hours above and never hidden by the per-day limit.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          {featTimes.map(t => (
+            <span key={t} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-900/50 border border-cyan-700/60 text-cyan-100 text-xs">
+              {new Date(`2000-01-01T${t}:00`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+              <button onClick={() => setFeatTimes(ts => ts.filter(x => x !== t))} aria-label={`Remove ${t}`} className="text-cyan-300 hover:text-white">×</button>
+            </span>
+          ))}
+          <input type="time" step={900} className={`${inputCls} py-1`} value={newFeat} onChange={e => setNewFeat(e.target.value)} />
+          <button onClick={() => { if (newFeat && !featTimes.includes(newFeat)) setFeatTimes(ts => [...ts, newFeat].sort()) }} className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs rounded-lg">Add time</button>
+        </div>
+        {featTimes.length > 0 && (
+          <div className="flex flex-wrap gap-3 mt-2 text-sm">
+            {DAYS.map((name, d) => (
+              <label key={d} className="flex items-center gap-1.5 text-gray-300">
+                <input type="checkbox" checked={featDays.includes(d)} onChange={() => setFeatDays(ds => ds.includes(d) ? ds.filter(x => x !== d) : [...ds, d].sort())} /> {name}
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
       <label className="flex items-center gap-2 text-sm text-gray-200"><input type="checkbox" checked={f.enabled} onChange={e => setF({ ...f, enabled: e.target.checked })} /> Page is live (anyone with the link can book)</label>
       <button
         disabled={busy}
@@ -243,7 +272,9 @@ function PageEditor({ page, busy, onSave }: { page: BookingPageRow; busy: boolea
           title: f.title, slug: f.slug, description: f.description, event_type: f.event_type,
           duration_minutes: f.duration_minutes, buffer_minutes: f.buffer_minutes,
           min_notice_minutes: f.min_notice_hours * 60, max_days_ahead: f.max_days_ahead,
-          timezone: f.timezone, weekly_hours: hours, max_slots_per_day: f.max_slots_per_day, enabled: f.enabled,
+          timezone: f.timezone, weekly_hours: hours, max_slots_per_day: f.max_slots_per_day,
+          featured_times: featTimes.length && featDays.length ? { times: featTimes, days: featDays } : null,
+          enabled: f.enabled,
         })}
         className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg"
       >
