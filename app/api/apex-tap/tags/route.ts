@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createApexTapServerClient } from '@/lib/apexTapSupabase'
+import { createServerClient } from '@/lib/supabase'
+import { getCaller, canUseFeature, unauthorized, forbidden } from '@/lib/caller'
 
 export async function GET(req: NextRequest) {
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  if (!(await canUseFeature(createServerClient(), caller, '/apex-tap'))) return forbidden('Apex Tap isn\'t turned on for your account.')
   const { searchParams } = new URL(req.url)
   const search = searchParams.get('search') || ''
   const status = searchParams.get('status') || ''

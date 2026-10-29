@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
+import { getCaller, isAdmin, unauthorized, forbidden } from '@/lib/caller'
 import { TEMPLATE_IDS, type TemplateId } from '@/lib/reports'
 
 const FREQUENCIES = ['daily', 'weekly', 'monthly']
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-type Db = ReturnType<typeof createServerClient>
-
-async function resolveTenant(db: Db, agentId: string | null | undefined) {
-  return agentId ? getAgentTenantId(db, agentId) : null
+// The signed-in admin's tenant (proxy.ts already restricts /api/admin/* to admins).
+async function adminTenant(): Promise<{ id: string; tenantId: string } | NextResponse> {
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  if (!isAdmin(caller)) return forbidden()
+  return { id: caller.id, tenantId: caller.tenantId }
 }
 
 function validateTiming(frequency: unknown, hourUtc: unknown, dayOfWeek: unknown, dayOfMonth: unknown): string | null {
@@ -26,13 +29,11 @@ function cleanRecipients(recipients: unknown): string[] | null {
   return list
 }
 
-export async function GET(req: NextRequest) {
-  const agentId = new URL(req.url).searchParams.get('agent_id')
-  if (!agentId) return NextResponse.json({ error: 'agent_id is required' }, { status: 400 })
-
+export async function GET() {
+  const admin = await adminTenant()
+  if (admin instanceof NextResponse) return admin
+  const tenantId = admin.tenantId
   const db = createServerClient()
-  const tenantId = await resolveTenant(db, agentId)
-  if (!tenantId) return NextResponse.json({ error: 'Unknown agent' }, { status: 404 })
 
   const { data, error } = await db
     .from('dialer_report_schedules')
@@ -45,16 +46,17 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { agent_id, template, filters, recipients, frequency, hour_utc, day_of_week, day_of_month } = await req.json()
+  const { template, filters, recipients, frequency, hour_utc, day_of_week, day_of_month } = await req.json()
   if (!TEMPLATE_IDS.includes(template as TemplateId)) return NextResponse.json({ error: 'Unknown template' }, { status: 400 })
   const list = cleanRecipients(recipients)
   if (!list) return NextResponse.json({ error: 'Enter at least one valid email address' }, { status: 400 })
   const timingError = validateTiming(frequency, hour_utc, day_of_week, day_of_month)
   if (timingError) return NextResponse.json({ error: timingError }, { status: 400 })
 
+  const admin = await adminTenant()
+  if (admin instanceof NextResponse) return admin
+  const tenantId = admin.tenantId
   const db = createServerClient()
-  const tenantId = await resolveTenant(db, agent_id)
-  if (!tenantId) return NextResponse.json({ error: 'Unknown agent' }, { status: 404 })
 
   const { data, error } = await db
     .from('dialer_report_schedules')
@@ -70,7 +72,7 @@ export async function POST(req: NextRequest) {
       hour_utc,
       day_of_week: frequency === 'weekly' ? day_of_week : null,
       day_of_month: frequency === 'monthly' ? day_of_month : null,
-      created_by: agent_id,
+      created_by: admin.id,
     })
     .select()
     .single()
@@ -80,13 +82,14 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { id, agent_id, enabled } = await req.json()
+  const { id, enabled } = await req.json()
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
   if (typeof enabled !== 'boolean') return NextResponse.json({ error: 'enabled must be true or false' }, { status: 400 })
 
+  const admin = await adminTenant()
+  if (admin instanceof NextResponse) return admin
+  const tenantId = admin.tenantId
   const db = createServerClient()
-  const tenantId = await resolveTenant(db, agent_id)
-  if (!tenantId) return NextResponse.json({ error: 'Unknown agent' }, { status: 404 })
 
   const { data, error } = await db
     .from('dialer_report_schedules')
@@ -105,9 +108,10 @@ export async function DELETE(req: NextRequest) {
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
+  const admin = await adminTenant()
+  if (admin instanceof NextResponse) return admin
+  const tenantId = admin.tenantId
   const db = createServerClient()
-  const tenantId = await resolveTenant(db, searchParams.get('agent_id'))
-  if (!tenantId) return NextResponse.json({ error: 'Unknown agent' }, { status: 404 })
 
   const { error } = await db.from('dialer_report_schedules').delete().eq('id', id).eq('tenant_id', tenantId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

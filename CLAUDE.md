@@ -34,15 +34,18 @@ There is **no other app sharing this Supabase project** today. (Older notes desc
 - **Super admin (platform admin):** `agents.is_platform_admin = true`. Currently only the Apex account (`jordan@apexdevelopmentandmarketing.com`, tenant "Apex Development & Marketing"). Sees **Admin → Clients** (`/admin/tenants`): create clients, toggle each client's visible pages (`tenants.hidden_features`).
 - **Client admin:** `role = 'admin'` within a tenant — sees that tenant's admin pages only.
 - **Agent:** `role = 'agent'`.
-- Planned: a super-admin account switcher to open any client account from the Apex login (requires server-side auth first — see below).
+- Planned: a super-admin account switcher to open any client account from the Apex login (server-side auth, below, is the prerequisite).
 
-## Auth — current state and known gap
+## Auth — how API requests are verified
 - Login (`app/login`) uses `supabase.auth.signInWithPassword`, then loads the `agents` row into React context + `localStorage` (8-hour expiry) and sets HttpOnly cookies via `/api/auth/session`.
-- ⚠️ **API routes do not verify the session.** They trust an `agent_id` sent by the browser and resolve the tenant from it (`getAgentTenantId`). Several routes return **all tenants'** data when `agent_id` is omitted. The only server-checked permission today is `is_platform_admin` on `/api/platform/*`. Fixing this (verify the Supabase JWT, derive agent + tenant from it) is the top security to-do — do not give outside parties logins until it's done.
+- `lib/authFetch.ts` patches `window.fetch` (installed at module load in `SoftphoneContext`) to add `Authorization: Bearer <supabase access token>` to every same-origin `/api/*` call. A 401 with `code: 'session_required'` clears the saved agent and sends the user to `/login`.
+- `proxy.ts` (Next 16's middleware) runs on every `/api/*` request: it strips any incoming `x-caller-*` headers, verifies the token with `supabase.auth.getUser`, loads the `agents` row (30 s cache), and passes `x-caller-id / -tenant / -role / -platform-admin` to the route. It also enforces `/api/admin/*` = admin (except `GET /api/admin/tags`) and `/api/platform/*` = platform admin.
+- Public (no token): `/api/webhooks/*`, `/api/book/*`, `/api/reminders/dispatch`, `/api/reports/dispatch`, `/api/auth/session` — listed in `lib/callerHeaders.ts`.
+- **In routes, identity and tenant come only from `getCaller()` (`lib/caller.ts`)** — never from an `agent_id`/`tenant_id` in the body or query. Every update/delete by id must also filter `.eq('tenant_id', caller.tenantId)`. `getAgentTenantId()` returns the caller's tenant when there is one and only looks up the given agent for webhooks/jobs.
 
 ## Multi-tenancy
 - `tenants` table; almost every table has `tenant_id` (default = SwiftPath's id for legacy rows).
-- Server routes scope queries with `getAgentTenantId(db, agentId)` from `lib/supabase.ts`.
+- Server routes scope queries to `getCaller().tenantId` (`lib/caller.ts`). The `tenant_id` column default means an insert that forgets `tenant_id` silently lands in SwiftPath — always set it.
 - Standard RLS select policy for tenant tables:
   ```sql
   using ((select auth.role()) = 'authenticated'

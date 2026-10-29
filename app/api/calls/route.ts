@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
+import { getCaller, isAdmin, unauthorized } from '@/lib/caller'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const agentId = searchParams.get('agent_id')
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  // Agents see their own history; admins may pick a teammate (or omit for the whole account).
+  const agentId = isAdmin(caller) ? searchParams.get('agent_id') : caller.id
   const toNumber = searchParams.get('to_number')
-  const limit = parseInt(searchParams.get('limit') || '50')
+  const limit = Math.min(parseInt(searchParams.get('limit') || '50') || 50, 1000)
 
   const db = createServerClient()
-  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
+  const tenantId = caller.tenantId
 
   // Inbound group calls have agent_id=null; include them if the agent is in the group
   let groupIds: string[] = []
@@ -30,7 +34,7 @@ export async function GET(req: NextRequest) {
     .order('started_at', { ascending: false })
     .limit(limit)
 
-  if (tenantId) query = query.eq('tenant_id', tenantId)
+  query = query.eq('tenant_id', tenantId)
   if (dateFrom) query = query.gte('started_at', dateFrom)
   if (dateTo) query = query.lte('started_at', dateTo)
 
@@ -57,13 +61,17 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const body = await req.json()
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
   const db = createServerClient()
+  const tenantId = caller.tenantId
 
   // When an agent answers an inbound call, attribute it to them
   if (body.action === 'answer') {
-    const { agentId, remoteNumber, groupId, groupName, agentCallLegId } = body
+    const { remoteNumber, groupId, groupName, agentCallLegId } = body
+    if (!remoteNumber) return NextResponse.json({ error: 'No remoteNumber' }, { status: 400 })
 
-    const updates: Record<string, string> = { agent_id: agentId, status: 'active' }
+    const updates: Record<string, string> = { agent_id: caller.id, status: 'active' }
     if (agentCallLegId) updates.agent_call_leg_id = agentCallLegId
 
     let query = db
@@ -73,6 +81,7 @@ export async function PATCH(req: NextRequest) {
       .in('status', ['ringing', 'initiated'])
       .is('ended_at', null)
       .is('agent_id', null)
+      .eq('tenant_id', tenantId)
 
     // Narrow to the specific group — prefer the ID (exact), fall back to name lookup
     if (groupId) {
@@ -82,7 +91,8 @@ export async function PATCH(req: NextRequest) {
         .from('inbound_groups')
         .select('id')
         .eq('name', groupName)
-        .single()
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
       if (group) query = query.eq('group_id', group.id)
     }
 
@@ -118,6 +128,15 @@ export async function PATCH(req: NextRequest) {
   if (body.action === 'record') {
     const { callControlId } = body
     if (!callControlId) return NextResponse.json({ error: 'No callControlId' }, { status: 400 })
+    // Only record a call this agent placed (the row is written by POST when they dial).
+    const { data: own } = await db
+      .from('dialer_calls')
+      .select('id')
+      .eq('telnyx_call_control_id', callControlId)
+      .eq('agent_id', caller.id)
+      .eq('tenant_id', tenantId)
+      .limit(1)
+    if (!own?.length) return NextResponse.json({ error: 'Call not found' }, { status: 404 })
 
     const [apiKeyRes, appUrlRes] = await Promise.all([
       db.from('app_config').select('value').eq('key', 'telnyx_api_key').single(),
@@ -141,7 +160,8 @@ export async function PATCH(req: NextRequest) {
 
   // Update outbound call status + duration when the WebRTC call ends in the browser
   if (body.action === 'end') {
-    const { callControlId, agentId, duration_seconds, status } = body
+    const { callControlId, duration_seconds, status } = body
+    const agentId = caller.id
     const updates = {
       status: status || 'completed',
       duration_seconds: duration_seconds ?? null,
@@ -154,24 +174,27 @@ export async function PATCH(req: NextRequest) {
         .from('dialer_calls')
         .update(updates)
         .eq('telnyx_call_control_id', callControlId)
+        .eq('agent_id', agentId)
+        .eq('tenant_id', tenantId)
         .select('id')
       if (matched && matched.length > 0) return NextResponse.json({ ok: true })
     }
 
     // Fallback: match most recent initiated/active outbound call for this agent
     // (handles page-refresh / ID-mismatch cases)
-    if (agentId) {
+    {
       const { data: recent } = await db
         .from('dialer_calls')
         .select('id')
         .eq('agent_id', agentId)
+        .eq('tenant_id', tenantId)
         .eq('direction', 'outbound')
         .in('status', ['initiated', 'active'])
         .is('ended_at', null)
         .order('started_at', { ascending: false })
         .limit(1)
       if (recent && recent.length > 0) {
-        await db.from('dialer_calls').update(updates).eq('id', recent[0].id)
+        await db.from('dialer_calls').update(updates).eq('id', recent[0].id).eq('tenant_id', tenantId)
       }
     }
     return NextResponse.json({ ok: true })
@@ -179,13 +202,13 @@ export async function PATCH(req: NextRequest) {
 
   // Clean up stuck 'initiated' outbound calls from a previous browser session
   if (body.action === 'cleanup') {
-    const { agentId } = body
-    if (!agentId) return NextResponse.json({ error: 'No agentId' }, { status: 400 })
+    const agentId = caller.id
     const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
     await db
       .from('dialer_calls')
       .update({ status: 'no-answer', ended_at: new Date().toISOString() })
       .eq('agent_id', agentId)
+      .eq('tenant_id', tenantId)
       .eq('direction', 'outbound')
       .eq('status', 'initiated')
       .is('ended_at', null)
@@ -198,8 +221,10 @@ export async function PATCH(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
   const db = createServerClient()
-  const tenantId = body.agent_id ? await getAgentTenantId(db, body.agent_id) : null
+  const tenantId = caller.tenantId
 
   const { data, error } = await db
     .from('dialer_calls')
@@ -207,7 +232,8 @@ export async function POST(req: NextRequest) {
       direction: 'outbound',
       from_number: body.from_number,
       to_number: body.to_number,
-      agent_id: body.agent_id,
+      agent_id: caller.id,
+      tenant_id: tenantId,
       status: 'initiated',
       started_at: new Date().toISOString(),
       telnyx_call_control_id: body.telnyx_call_control_id || null,
@@ -226,7 +252,7 @@ export async function POST(req: NextRequest) {
       .from('leads')
       .update({ last_called_at: new Date().toISOString() })
       .ilike('phone', `%${toDigits}%`)
-    if (tenantId) updateQuery = updateQuery.eq('tenant_id', tenantId)
+    updateQuery = updateQuery.eq('tenant_id', tenantId)
     await updateQuery
   }
 

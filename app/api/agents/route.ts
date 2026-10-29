@@ -1,31 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
+import { getCaller, isAdmin, unauthorized, forbidden } from '@/lib/caller'
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const agentId = searchParams.get('agent_id')
+const ADMIN_COLUMNS = 'id, name, email, sip_username, sip_password, extension, did, status, voicemail_greeting_url, can_view_all_leads, hidden_features, is_platform_admin, tenant_id, updated_at'
+// Teammates see each other's names and status, never softphone credentials.
+const AGENT_COLUMNS = 'id, name, email, extension, status, tenant_id'
 
+// What each kind of caller may change. role, tenant_id, is_platform_admin and email are
+// never editable here — those go through the Clients page / Supabase Auth.
+const SELF_FIELDS = ['status']
+const ADMIN_FIELDS = ['name', 'status', 'extension', 'did', 'sip_username', 'sip_password', 'can_view_all_leads', 'hidden_features', 'voicemail_greeting_url']
+const STATUSES = ['available', 'busy', 'offline']
+
+export async function GET() {
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
   const db = createServerClient()
-  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
-
-  let query = db
+  const { data, error } = await db
     .from('agents')
-    .select('id, name, email, sip_username, sip_password, extension, did, status, voicemail_greeting_url, can_view_all_leads, hidden_features, is_platform_admin, tenant_id, updated_at')
+    .select(isAdmin(caller) ? ADMIN_COLUMNS : AGENT_COLUMNS)
+    .eq('tenant_id', caller.tenantId)
     .order('name')
-  if (tenantId) query = query.eq('tenant_id', tenantId)
-
-  const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
 
+// Creates a softphone-only agent row (no login) in the admin's own tenant.
 export async function POST(req: NextRequest) {
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  if (!isAdmin(caller)) return forbidden()
   const body = await req.json()
   const db = createServerClient()
-
-  // New agents inherit the creating admin's tenant — falls back to the schema default
-  // (today's single tenant) if the caller doesn't pass one, same as every other insert path.
-  const tenantId = body.agent_id ? await getAgentTenantId(db, body.agent_id) : null
 
   const { data, error } = await db
     .from('agents')
@@ -35,9 +41,9 @@ export async function POST(req: NextRequest) {
       sip_username: body.sip_username,
       sip_password: body.sip_password,
       extension: body.extension || null,
-      ...(tenantId ? { tenant_id: tenantId } : {}),
+      tenant_id: caller.tenantId,
     })
-    .select()
+    .select(ADMIN_COLUMNS)
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -45,28 +51,46 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const body = await req.json()
-  const { id, ...updates } = body
-  const db = createServerClient()
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  const { id, ...requested } = await req.json()
+  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
-  const { data, error } = await db
-    .from('agents')
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .select()
-    .single()
+  const self = id === caller.id
+  const allowed = isAdmin(caller) ? ADMIN_FIELDS : self ? SELF_FIELDS : []
+  if (!allowed.length) return forbidden()
+
+  const updates: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(requested)) {
+    if (!allowed.includes(k)) return forbidden(`You can't change ${k}.`)
+    updates[k] = v
+  }
+  if ('status' in updates && !STATUSES.includes(updates.status as string)) {
+    return NextResponse.json({ error: 'Unknown status' }, { status: 400 })
+  }
+
+  const db = createServerClient()
+  let query = db.from('agents').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id)
+  if (!caller.isPlatformAdmin) query = query.eq('tenant_id', caller.tenantId)
+  const { data, error } = await query.select(isAdmin(caller) ? ADMIN_COLUMNS : AGENT_COLUMNS).maybeSingle()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
   return NextResponse.json(data)
 }
 
 export async function DELETE(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const id = searchParams.get('id')
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  if (!isAdmin(caller)) return forbidden()
+  const id = new URL(req.url).searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+  if (id === caller.id) return NextResponse.json({ error: 'You can\'t delete your own login.' }, { status: 400 })
 
   const db = createServerClient()
-  const { error } = await db.from('agents').delete().eq('id', id)
+  let query = db.from('agents').delete().eq('id', id)
+  if (!caller.isPlatformAdmin) query = query.eq('tenant_id', caller.tenantId)
+  const { error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
