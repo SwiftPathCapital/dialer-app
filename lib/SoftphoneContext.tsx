@@ -737,46 +737,54 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   }
 
   // ── Public call actions ───────────────────────────────────────────────────
+  function showCallError(msg: string) {
+    setCallErrorMsg(msg)
+    if (callErrorTimerRef.current) clearTimeout(callErrorTimerRef.current)
+    callErrorTimerRef.current = setTimeout(() => setCallErrorMsg(null), 6000)
+  }
+
+  // ── Pre-flight: cooldown + calling hours + caller ID ─────────────────────
+  // Must run BEFORE client.newCall() so the WebRTC dial never fires when blocked.
+  // bypassCooldown (scheduled callbacks, dialpad, redial, add-party) skips only the 8-hour
+  // cooldown — calling hours in the lead's time zone always apply. If the check can't be
+  // completed the call is NOT placed: calling hours are a legal limit, so this fails closed.
+  async function preflightDial(number: string, bypassCooldown: boolean): Promise<{ ok: true; callerNumber: string } | { ok: false }> {
+    const fallback: string = agent?.did || agent?.extension || agent?.sip_username || ''
+    const digits = number.replace(/\D/g, '')
+    if (digits.length < 7) return { ok: true, callerNumber: fallback }
+    try {
+      const params = new URLSearchParams({ phone: digits })
+      if (bypassCooldown) params.set('bypass_cooldown', '1')
+      const res = await fetch(`/api/calls/preflight?${params}`)
+      if (!res.ok) throw new Error(`preflight ${res.status}`)
+      const check = await res.json()
+      if (check.blocked) {
+        showCallError(check.reason === 'calling_hours'
+          ? check.message || 'Outside calling hours for this lead.'
+          : `This lead cannot be called again until ${new Date(check.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} (8-hour cooldown after disposition).`)
+        return { ok: false }
+      }
+      return { ok: true, callerNumber: check.callerId || fallback }
+    } catch {
+      showCallError("Couldn't check calling hours for this number. Try again in a moment.")
+      return { ok: false }
+    }
+  }
+
   async function makeCall(number: string, opts?: { bypassCooldown?: boolean }): Promise<boolean> {
     if (!clientRef.current || !agent) return false
     if (dialingRef.current) return false
     if (predictiveCallRef.current || predictiveArmedRef.current) {
-      setCallErrorMsg('Stop predictive dialing before placing a manual call.')
-      if (callErrorTimerRef.current) clearTimeout(callErrorTimerRef.current)
-      callErrorTimerRef.current = setTimeout(() => setCallErrorMsg(null), 6000)
+      showCallError('Stop predictive dialing before placing a manual call.')
       return false
     }
 
-    // ── Pre-flight: cooldown + calling hours + caller ID ─────────────────────
-    // Must happen BEFORE client.newCall() so the WebRTC dial never fires when blocked.
-    // bypassCooldown (scheduled callbacks, dialpad, redial) skips only the 8-hour
-    // cooldown — calling hours in the lead's time zone always apply.
-    let callerNumber: string = agent.did || agent.extension || agent.sip_username
-    const digits = number.replace(/\D/g, '')
-    if (digits.length >= 7) {
-      try {
-        const params = new URLSearchParams({ phone: digits, agent_id: agent.id })
-        if (opts?.bypassCooldown) params.set('bypass_cooldown', '1')
-        const res = await fetch(`/api/calls/preflight?${params}`)
-        if (res.ok) {
-          const check = await res.json()
-          if (check.blocked) {
-            const msg = check.reason === 'calling_hours'
-              ? check.message || 'Outside calling hours for this lead.'
-              : `This lead cannot be called again until ${new Date(check.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} (8-hour cooldown after disposition).`
-            setCallErrorMsg(msg)
-            if (callErrorTimerRef.current) clearTimeout(callErrorTimerRef.current)
-            callErrorTimerRef.current = setTimeout(() => setCallErrorMsg(null), 6000)
-            return false
-          }
-          if (check.callerId) callerNumber = check.callerId
-        }
-      } catch {
-        // Network error — let the call proceed on the agent's own number rather than silently block
-      }
-    }
-
+    // Claim the dial before the preflight await so a double-click can't place two calls.
     dialingRef.current = true
+    const pre = await preflightDial(number, !!opts?.bypassCooldown)
+    if (!pre.ok) { dialingRef.current = false; return false }
+    const callerNumber = pre.callerNumber
+
     setAgentBusy()
 
     let call: any
@@ -819,9 +827,11 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     setCallErrorMsg(null)
   }
 
-  function addPartyCall(number: string) {
+  async function addPartyCall(number: string) {
     if (!clientRef.current || !agent || !activeCallRef.current) return
     if (activeCallRef.current.state !== 'active') return
+    const pre = await preflightDial(number, true)
+    if (!pre.ok || !clientRef.current || activeCallRef.current?.state !== 'active') return
 
     // Hold the current call and immediately move it to heldCall state
     try { activeCallRef.current.telnyxCall.hold() } catch {}
@@ -832,7 +842,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     // Dial the new party via WebRTC
     const call = clientRef.current.newCall({
       destinationNumber: number,
-      callerNumber: agent.did || agent.extension || agent.sip_username,
+      callerNumber: pre.callerNumber,
     })
     outboundCallIdRef.current = call.id
 
@@ -851,7 +861,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from_number: agent.did || agent.extension || agent.sip_username,
+        from_number: pre.callerNumber,
         to_number: number,
         agent_id: agent.id,
         telnyx_call_control_id: call.id,
