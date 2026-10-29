@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { MapPin, PhoneForwarded, Zap, Radar, Check, Plus, Trash2, AlertTriangle } from 'lucide-react'
+import { MapPin, PhoneForwarded, Zap, Radar, Check, Plus, Trash2, AlertTriangle, Search, ShoppingCart } from 'lucide-react'
 import type { DialerSettings } from '@/lib/dialerSettings'
 import { STATE_TIMEZONES } from '@/lib/callingHours'
 
@@ -202,7 +202,7 @@ export default function DialerSettingsPanel({ agentId, tenantId, tenantName }: {
           )}
 
           {showAssign && isPlatformAdmin && tenantId && (
-            <AssignNumbers agentId={agentId} tenantId={tenantId} onChanged={loadNumbers} />
+            <AssignNumbers tenantId={tenantId} onChanged={loadNumbers} />
           )}
 
           {numbers.length === 0 ? (
@@ -410,7 +410,7 @@ interface TelnyxNumberRow {
   used_as: string | null
 }
 
-function AssignNumbers({ agentId, tenantId, onChanged }: { agentId: string; tenantId: string; onChanged: () => void }) {
+function AssignNumbers({ tenantId, onChanged }: { tenantId: string; onChanged: () => void }) {
   const [rows, setRows] = useState<TelnyxNumberRow[] | null>(null)
   const [expected, setExpected] = useState<{ connection_name: string | null; messaging_profile_name: string | null }>({ connection_name: null, messaging_profile_name: null })
   const [error, setError] = useState('')
@@ -419,7 +419,7 @@ function AssignNumbers({ agentId, tenantId, onChanged }: { agentId: string; tena
   const [busy, setBusy] = useState<string | null>(null)
 
   const load = useCallback(() => {
-    fetch(`/api/platform/caller-ids?agent_id=${agentId}`)
+    fetch('/api/platform/caller-ids')
       .then(async r => {
         const d = await r.json()
         if (!r.ok) throw new Error(d.error || 'Could not load Telnyx numbers')
@@ -427,7 +427,7 @@ function AssignNumbers({ agentId, tenantId, onChanged }: { agentId: string; tena
         setExpected(d.expected)
       })
       .catch(err => setError(err.message))
-  }, [agentId])
+  }, [])
 
   useEffect(() => { load() }, [load])
 
@@ -437,7 +437,7 @@ function AssignNumbers({ agentId, tenantId, onChanged }: { agentId: string; tena
     const res = await fetch('/api/platform/caller-ids', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agent_id: agentId, tenant_id: tenantId, phone_number: row.phone_number, telnyx_number_id: row.telnyx_number_id, state: stateFor[row.telnyx_number_id] || null }),
+      body: JSON.stringify({ tenant_id: tenantId, phone_number: row.phone_number, telnyx_number_id: row.telnyx_number_id, state: stateFor[row.telnyx_number_id] || null }),
     }).catch(() => null)
     setBusy(null)
     if (!res?.ok) { const d = await res?.json().catch(() => null); setError(d?.error || 'Could not assign'); return }
@@ -448,7 +448,7 @@ function AssignNumbers({ agentId, tenantId, onChanged }: { agentId: string; tena
   async function unassign(row: TelnyxNumberRow) {
     if (!row.local_presence || !confirm(`Remove ${formatPhone(row.phone_number)} from ${row.local_presence.tenant_name}?`)) return
     setBusy(row.telnyx_number_id)
-    await fetch(`/api/platform/caller-ids?agent_id=${agentId}&id=${row.local_presence.id}`, { method: 'DELETE' }).catch(() => {})
+    await fetch(`/api/platform/caller-ids?id=${row.local_presence.id}`, { method: 'DELETE' }).catch(() => {})
     setBusy(null)
     load()
     onChanged()
@@ -499,7 +499,85 @@ function AssignNumbers({ agentId, tenantId, onChanged }: { agentId: string; tena
           {visible.length === 0 && <p className="text-gray-600 py-2">No numbers match.</p>}
         </div>
       )}
-      <p className="text-gray-600 text-[11px] mt-3">Need more numbers? Buy them in the Telnyx portal, then they&apos;ll show up here.</p>
+      <BuyNumber tenantId={tenantId} onBought={() => { load(); onChanged() }} />
+    </div>
+  )
+}
+
+interface AvailableNumberRow { phone_number: string; state: string | null; city: string | null; monthly_cost: string | null; upfront_cost: string | null; currency: string; sms: boolean }
+
+const money = (v: string | null, currency: string) => v == null ? '?' : new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(v))
+
+// Buys a new number on the shared Telnyx account for this client. Real money: every purchase
+// shows its price and asks first; the server also refuses an unconfirmed request.
+function BuyNumber({ tenantId, onBought }: { tenantId: string; onBought: () => void }) {
+  const [areaCode, setAreaCode] = useState('')
+  const [state, setState] = useState('')
+  const [results, setResults] = useState<AvailableNumberRow[] | null>(null)
+  const [searching, setSearching] = useState(false)
+  const [buying, setBuying] = useState<string | null>(null)
+  const [message, setMessage] = useState<{ kind: 'error' | 'ok'; text: string } | null>(null)
+
+  async function search(e: React.FormEvent) {
+    e.preventDefault()
+    setSearching(true); setMessage(null); setResults(null)
+    const q = new URLSearchParams()
+    if (areaCode.trim()) q.set('area_code', areaCode.trim())
+    if (state) q.set('state', state)
+    const res = await fetch(`/api/platform/numbers?${q}`).catch(() => null)
+    const d = await res?.json().catch(() => null)
+    setSearching(false)
+    if (!res?.ok) { setMessage({ kind: 'error', text: d?.error || 'Search failed' }); return }
+    setResults(d.numbers)
+  }
+
+  async function buy(n: AvailableNumberRow) {
+    const price = `${money(n.monthly_cost, n.currency)}/month${n.upfront_cost && Number(n.upfront_cost) > 0 ? ` + ${money(n.upfront_cost, n.currency)} now` : ''}`
+    if (!confirm(`Buy ${formatPhone(n.phone_number)} for ${price} on your Telnyx account and assign it to this client?\n\nTelnyx bills this to your account.`)) return
+    setBuying(n.phone_number); setMessage(null)
+    const res = await fetch('/api/platform/numbers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone_number: n.phone_number, tenant_id: tenantId, state: n.state, confirm: true }),
+    }).catch(() => null)
+    const d = await res?.json().catch(() => null)
+    setBuying(null)
+    if (!res?.ok) { setMessage({ kind: 'error', text: d?.error || 'Purchase failed' }); return }
+    setResults(r => r?.filter(x => x.phone_number !== n.phone_number) ?? null)
+    setMessage(d.warning ? { kind: 'error', text: d.warning } : { kind: 'ok', text: `Bought ${formatPhone(n.phone_number)} and assigned it.${d.order_status === 'pending' ? ' Telnyx is still activating it; it may take a few minutes to ring.' : ''}` })
+    onBought()
+  }
+
+  return (
+    <div className="mt-4 border-t border-gray-800 pt-3">
+      <p className="text-gray-300 text-sm font-medium mb-2 flex items-center gap-2"><ShoppingCart className="w-4 h-4 text-cyan-400" /> Buy a new number</p>
+      <form onSubmit={search} className="flex items-center gap-2 flex-wrap mb-2">
+        <input value={areaCode} onChange={e => setAreaCode(e.target.value.replace(/\D/g, '').slice(0, 3))} placeholder="Area code" inputMode="numeric" className={`${inputCls} py-1 text-xs w-24`} />
+        <span className="text-gray-600 text-xs">or</span>
+        <select value={state} onChange={e => setState(e.target.value)} className={`${inputCls} py-1 text-xs`}>
+          <option value="">State…</option>
+          {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <button type="submit" disabled={searching || (!areaCode && !state)} className="flex items-center gap-1 px-2.5 py-1 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-white text-xs rounded-md transition-colors">
+          <Search className="w-3.5 h-3.5" /> {searching ? 'Searching…' : 'Search'}
+        </button>
+      </form>
+      {message && <p className={`text-xs mb-2 ${message.kind === 'error' ? 'text-red-400' : 'text-green-400'}`}>{message.text}</p>}
+      {results && (results.length === 0 ? <p className="text-gray-600 text-xs">Telnyx has no numbers for sale there right now.</p> : (
+        <div className="max-h-60 overflow-y-auto divide-y divide-gray-800">
+          {results.map(n => (
+            <div key={n.phone_number} className="flex items-center gap-3 py-2 text-xs">
+              <span className="text-gray-200 w-32">{formatPhone(n.phone_number)}</span>
+              <span className="flex-1 text-gray-500">{[n.city, n.state].filter(Boolean).join(', ')}{!n.sms && <span className="text-amber-400"> · no texting</span>}</span>
+              <span className="text-gray-400">{money(n.monthly_cost, n.currency)}/mo</span>
+              <button onClick={() => buy(n)} disabled={!!buying} className="px-2.5 py-1 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white rounded-md transition-colors">
+                {buying === n.phone_number ? 'Buying…' : 'Buy'}
+              </button>
+            </div>
+          ))}
+        </div>
+      ))}
+      <p className="text-gray-600 text-[11px] mt-2">New numbers go on the same voice connection and messaging profile as your current lines. Texting from them still needs them added to your 10DLC campaign in Telnyx.</p>
     </div>
   )
 }
