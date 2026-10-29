@@ -69,17 +69,17 @@ export async function tenantAbandonStats(db: Db, tenantId: string) {
 // ── Pacer ────────────────────────────────────────────────────────────────────
 
 // Runs on every agent heartbeat and every dialer webhook. A short lease on the tenant's
-// settings row makes concurrent triggers a no-op instead of double-dialing.
+// settings row makes concurrent triggers a no-op instead of double-dialing. It also runs
+// when predictive has been switched off, so open sessions get shut down (see paceLocked).
 export async function pace(db: Db, tenantId: string): Promise<{ dialed: number; reason?: string }> {
   const nowIso = new Date().toISOString()
   const { data: lease } = await db
     .from('dialer_tenant_settings')
     .update({ pacer_locked_until: new Date(Date.now() + 5000).toISOString() })
     .eq('tenant_id', tenantId)
-    .eq('predictive_enabled', true)
     .or(`pacer_locked_until.is.null,pacer_locked_until.lt.${nowIso}`)
     .select('tenant_id')
-  if (!lease?.length) return { dialed: 0, reason: 'locked-or-disabled' }
+  if (!lease?.length) return { dialed: 0, reason: 'locked' }
 
   try {
     return await paceLocked(db, tenantId)
@@ -94,22 +94,24 @@ async function paceLocked(db: Db, tenantId: string): Promise<{ dialed: number; r
   const settings = await getDialerSettings(db, tenantId)
   const staleCutoff = new Date(Date.now() - HEARTBEAT_STALE_MS).toISOString()
 
-  // Agents whose browser stopped checking in: drop their connection so nobody is
-  // connected to an empty seat.
-  const { data: stale } = await db
+  // Agents whose browser stopped checking in — or every idle agent, once predictive has
+  // been switched off for this client — lose their connection so nobody is connected to an
+  // empty seat and no more calls go out. Agents on a live call finish it; the next tick
+  // after their wrap-up ends them too.
+  let toEnd = db
     .from('dialer_agent_sessions')
     .update({ status: 'ended', ended_at: new Date().toISOString() })
     .eq('tenant_id', tenantId)
     .in('status', ['connecting', 'ready', 'wrapup'])
-    .lt('last_heartbeat_at', staleCutoff)
-    .select('agent_id, agent_call_control_id')
+  if (settings.predictive_enabled) toEnd = toEnd.lt('last_heartbeat_at', staleCutoff)
+  const { data: stale } = await toEnd.select('agent_id, agent_call_control_id')
   for (const s of stale ?? []) {
     await hangupCall(s.agent_call_control_id)
     // Start marked them busy; free them for inbound calls again (same as Stop does).
     await db.from('agents').update({ status: 'available', updated_at: new Date().toISOString() }).eq('id', s.agent_id).eq('status', 'busy')
   }
 
-  const { data: ready } = await db
+  const { data: ready } = !settings.predictive_enabled ? { data: [] } : await db
     .from('dialer_agent_sessions')
     .select('id, agent_id, agents(did)')
     .eq('tenant_id', tenantId)
