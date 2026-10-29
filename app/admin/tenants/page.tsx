@@ -20,6 +20,7 @@ const TOGGLEABLE_FEATURES = [
   { href: '/leads', label: 'Leads' },
   { href: '/contact-center', label: 'Conversations' },
   { href: '/voicemail', label: 'Voicemail' },
+  { href: '/calendar', label: 'Calendar' },
   { href: '/callbacks', label: 'Callbacks' },
   { href: '/calls', label: 'Call Log' },
   { href: '/moisture-mapping', label: 'Moisture Mapping' },

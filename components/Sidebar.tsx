@@ -19,6 +19,7 @@ const NAV = [
   { href: '/leads',      icon: Contact,       label: 'Leads',      dataTour: '', emoji: '🪐' },
   { href: '/contact-center', icon: MessageSquare, label: 'Conversations', dataTour: 'nav-sms', emoji: '💠' },
   { href: '/voicemail',  icon: Voicemail,     label: 'Voicemail',  dataTour: 'nav-voicemail', emoji: '🎙️' },
+  { href: '/calendar',   icon: CalendarDays,  label: 'Calendar',   dataTour: '', emoji: '🗓️' },
   { href: '/callbacks',  icon: CalendarClock, label: 'Callbacks',  dataTour: '', emoji: '⏱️' },
   { href: '/calls',      icon: List,          label: 'Call Log',   dataTour: '', emoji: '📶' },
   { href: '/moisture-mapping', icon: Droplets, label: 'Moisture Mapping', dataTour: '', emoji: '💧' },
