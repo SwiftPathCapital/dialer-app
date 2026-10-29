@@ -24,6 +24,10 @@ async function resolveCaller(token: string): Promise<CallerInfo | null> {
 
   const db = serviceClient()
   const { data: userData, error } = await db.auth.getUser(token)
+  // Only a token Supabase actually rejects means "signed out". Anything else (network error,
+  // Supabase 5xx) must not log everyone out — throw so the caller answers 503 and the
+  // browser keeps its session.
+  if (error && !(error.status && error.status >= 400 && error.status < 500)) throw error
   let info: CallerInfo | null = null
   if (!error && userData?.user) {
     const { data: agent } = await db
