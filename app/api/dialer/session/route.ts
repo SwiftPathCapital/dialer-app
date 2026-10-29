@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { getCaller, unauthorized } from '@/lib/caller'
 import { getConfigValue } from '@/lib/telnyx'
 import { telnyxRequest, encodeClientState } from '@/lib/telnyxApi'
 import { getDialerSettings } from '@/lib/dialerSettings'
@@ -25,9 +26,10 @@ async function setAgentStatus(db: Db, agentId: string, status: 'busy' | 'availab
   await db.from('agents').update({ status, updated_at: new Date().toISOString() }).eq('id', agentId)
 }
 
-export async function GET(req: NextRequest) {
-  const agentId = new URL(req.url).searchParams.get('agent_id')
-  if (!agentId) return NextResponse.json({ error: 'agent_id is required' }, { status: 400 })
+export async function GET() {
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  const agentId = caller.id
   const db = createServerClient()
 
   const session = await openSession(db, agentId)
@@ -53,11 +55,12 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { agent_id, action } = await req.json()
-  if (!agent_id) return NextResponse.json({ error: 'agent_id is required' }, { status: 400 })
+  const { action } = await req.json()
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
   const db = createServerClient()
 
-  const { data: agent } = await db.from('agents').select('id, tenant_id, sip_username, did').eq('id', agent_id).maybeSingle()
+  const { data: agent } = await db.from('agents').select('id, tenant_id, sip_username, did').eq('id', caller.id).maybeSingle()
   if (!agent) return NextResponse.json({ error: 'Unknown agent' }, { status: 404 })
 
   if (action === 'start') {

@@ -1,4 +1,5 @@
-import { createServerClient, getAgentTenantId } from './supabase'
+import { createServerClient } from './supabase'
+import { getAgentTenantId } from './caller'
 import { getTelnyxClient } from './telnyx'
 import { getDialerSettings } from './dialerSettings'
 import { chooseCallerId, loadCallerIds } from './localPresence'

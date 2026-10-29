@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
+import { getCaller, isAdmin, unauthorized, forbidden } from '@/lib/caller'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function flattenCalendar(row: any) {
@@ -15,16 +16,18 @@ function flattenCalendar(row: any) {
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const agentId = searchParams.get('agent_id')
   const all = searchParams.get('all') === 'true'
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  // Always the signed-in user — an agent can't list someone else's calendars.
+  const agentId = caller.id
 
   const db = createServerClient()
 
   if (all) {
     // Admin console view: every calendar in the requesting admin's tenant, with its member list.
-    if (!agentId) return NextResponse.json({ error: 'agent_id is required' }, { status: 400 })
-    const tenantId = await getAgentTenantId(db, agentId)
-    if (!tenantId) return NextResponse.json({ error: 'Unknown agent' }, { status: 404 })
+    if (!isAdmin(caller)) return forbidden()
+    const tenantId = caller.tenantId
 
     const { data, error } = await db
       .from('calendars')
@@ -36,8 +39,6 @@ export async function GET(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data ?? [])
   }
-
-  if (!agentId) return NextResponse.json({ error: 'agent_id is required' }, { status: 400 })
 
   // A given agent's own calendars: personal + any team calendar they're a member of.
   const { data, error } = await db
@@ -66,17 +67,20 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { name, color, group_id, agent_id } = await req.json()
+  const { name, color, group_id } = await req.json()
   if (!name?.trim()) return NextResponse.json({ error: 'name is required' }, { status: 400 })
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  if (!isAdmin(caller)) return forbidden()
 
   const db = createServerClient()
-  const tenantId = agent_id ? await getAgentTenantId(db, agent_id) : null
+  const tenantId = caller.tenantId
 
   const { data, error } = await db
     .from('calendars')
     .insert({
       name: name.trim(), color: color || '#a78bfa', type: 'team', group_id: group_id || null,
-      ...(tenantId ? { tenant_id: tenantId } : {}),
+      tenant_id: tenantId,
     })
     .select()
     .single()
@@ -95,9 +99,13 @@ export async function PATCH(req: NextRequest) {
   if (group_id !== undefined) updates.group_id = group_id
   if (reminder_offsets_minutes !== undefined) updates.reminder_offsets_minutes = reminder_offsets_minutes
 
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  if (!isAdmin(caller)) return forbidden()
   const db = createServerClient()
-  const { data, error } = await db.from('calendars').update(updates).eq('id', id).select().single()
+  const { data, error } = await db.from('calendars').update(updates).eq('id', id).eq('tenant_id', caller.tenantId).select().maybeSingle()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data) return NextResponse.json({ error: 'Calendar not found' }, { status: 404 })
   return NextResponse.json(data)
 }
 
@@ -106,13 +114,17 @@ export async function DELETE(req: NextRequest) {
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  if (!isAdmin(caller)) return forbidden()
   const db = createServerClient()
-  const { data: cal } = await db.from('calendars').select('type').eq('id', id).single()
-  if (cal?.type === 'personal') {
+  const { data: cal } = await db.from('calendars').select('type').eq('id', id).eq('tenant_id', caller.tenantId).maybeSingle()
+  if (!cal) return NextResponse.json({ error: 'Calendar not found' }, { status: 404 })
+  if (cal.type === 'personal') {
     return NextResponse.json({ error: 'Personal calendars cannot be deleted' }, { status: 400 })
   }
 
-  const { error } = await db.from('calendars').delete().eq('id', id)
+  const { error } = await db.from('calendars').delete().eq('id', id).eq('tenant_id', caller.tenantId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

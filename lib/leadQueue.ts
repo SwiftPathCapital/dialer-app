@@ -9,7 +9,7 @@ export interface LeadFilterOpts {
   agentId: string | null
   phone: string
   search: string
-  tenantId: string | null
+  tenantId: string
   // Predictive dialing pulls from the whole tenant pool: unassigned leads plus leads assigned
   // to any of these agents. When set, the per-agent assignment filter is replaced by this.
   assignedToAnyOf?: string[]
@@ -24,7 +24,7 @@ export interface LeadFilterOpts {
 export async function applyLeadFilters(db: any, query: any, opts: LeadFilterOpts): Promise<any> {
   const { agentId, phone, search, tenantId, assignedToAnyOf } = opts
 
-  if (tenantId) query = query.eq('tenant_id', tenantId)
+  query = query.eq('tenant_id', tenantId)
 
   if (phone) {
     query = query.ilike('phone', `%${phone}%`)
@@ -34,7 +34,10 @@ export async function applyLeadFilters(db: any, query: any, opts: LeadFilterOpts
     // below (DNC, cooldown, assignment, enabled sources) since those describe "who's
     // next to call," not "does this contact exist." A DNC'd or already-called contact
     // should still be findable by name/phone.
-    query = query.or(`company_name.ilike.%${search}%,name.ilike.%${search}%,phone.ilike.%${search}%`)
+    // Commas, parens and quotes are PostgREST filter syntax — strip them so a search can't
+    // add its own conditions to the or() list.
+    const term = search.replace(/[,()"'\\]/g, ' ').trim()
+    if (term) query = query.or(`company_name.ilike.%${term}%,name.ilike.%${term}%,phone.ilike.%${term}%`)
   } else if (agentId || assignedToAnyOf) {
     if (assignedToAnyOf) {
       query = assignedToAnyOf.length
@@ -54,9 +57,7 @@ export async function applyLeadFilters(db: any, query: any, opts: LeadFilterOpts
       }
     }
 
-    let sourcesQuery = db.from('lead_sources').select('name').eq('enabled', true)
-    if (tenantId) sourcesQuery = sourcesQuery.eq('tenant_id', tenantId)
-    const { data: sourceRows } = await sourcesQuery
+    const { data: sourceRows } = await db.from('lead_sources').select('name').eq('enabled', true).eq('tenant_id', tenantId)
 
     const activeSources = (sourceRows ?? []).map((r: { name: string }) => r.name)
 

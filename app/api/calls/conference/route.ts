@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { getCaller, unauthorized } from '@/lib/caller'
 
 // POST /api/calls/conference
 // Merges the active call (newly added party) and the held call into a Telnyx conference.
@@ -15,8 +16,20 @@ export async function POST(req: NextRequest) {
   if (!activeCallLegId || !heldCallLegId) {
     return NextResponse.json({ error: 'Missing call leg IDs' }, { status: 400 })
   }
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
 
   const db = createServerClient()
+
+  // Both legs must be live calls belonging to this agent — never someone else's call.
+  const { data: activeOwn } = await db
+    .from('dialer_calls')
+    .select('id')
+    .eq('telnyx_call_control_id', activeCallLegId)
+    .eq('agent_id', caller.id)
+    .eq('tenant_id', caller.tenantId)
+    .limit(1)
+  if (!activeOwn?.length) return NextResponse.json({ error: 'Call not found' }, { status: 404 })
   const { data: apiKeyRow } = await db.from('app_config').select('value').eq('key', 'telnyx_api_key').single()
   const apiKey = apiKeyRow?.value
   if (!apiKey) return NextResponse.json({ error: 'Telnyx API key not configured' }, { status: 500 })
@@ -28,6 +41,8 @@ export async function POST(req: NextRequest) {
     .from('dialer_calls')
     .select('telnyx_call_control_id, agent_call_leg_id, direction')
     .eq('agent_call_leg_id', heldCallLegId)
+    .eq('agent_id', caller.id)
+    .eq('tenant_id', caller.tenantId)
     .is('ended_at', null)
     .order('started_at', { ascending: false })
     .limit(1)
@@ -40,6 +55,8 @@ export async function POST(req: NextRequest) {
       .from('dialer_calls')
       .select('telnyx_call_control_id, agent_call_leg_id, direction')
       .eq('telnyx_call_control_id', heldCallLegId)
+      .eq('agent_id', caller.id)
+      .eq('tenant_id', caller.tenantId)
       .is('ended_at', null)
       .order('started_at', { ascending: false })
       .limit(1)

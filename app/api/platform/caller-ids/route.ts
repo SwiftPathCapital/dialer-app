@@ -23,7 +23,7 @@ function digits10(n: string | null | undefined) { return (n || '').replace(/\D/g
 
 export async function GET(req: NextRequest) {
   const db = createServerClient()
-  const actor = await getActor(db, new URL(req.url).searchParams.get('agent_id'))
+  const actor = await getActor()
   if (!actor?.is_platform_admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const numbers: TelnyxNumber[] = []
@@ -84,9 +84,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { agent_id, tenant_id, phone_number, state, label, telnyx_number_id } = await req.json()
+  const { tenant_id, phone_number, state, label, telnyx_number_id } = await req.json()
   const db = createServerClient()
-  const actor = await getActor(db, agent_id)
+  const actor = await getActor()
   if (!actor?.is_platform_admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const e164 = toE164(phone_number || '')
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const db = createServerClient()
-  const actor = await getActor(db, searchParams.get('agent_id'))
+  const actor = await getActor()
   if (!actor?.is_platform_admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })

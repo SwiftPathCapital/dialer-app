@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { getCaller, unauthorized } from '@/lib/caller'
+import { projectInTenant } from '@/lib/moistureAccess'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
@@ -9,7 +11,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'project_id, x, and y are required' }, { status: 400 })
   }
 
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
   const db = createServerClient()
+  if (!(await projectInTenant(db, project_id, caller.tenantId))) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   const { data, error } = await db
     .from('moisture_reading_points')
     .insert({ project_id, x, y, label: label || null })

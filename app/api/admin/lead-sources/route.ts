@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
+import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const agentId = searchParams.get('agent_id')
 
   const db = createServerClient()
-  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
+  const tenantId = await getAgentTenantId(db, agentId)
 
   let query = db.from('lead_sources').select('id, name, enabled, created_at').order('name')
-  if (tenantId) query = query.eq('tenant_id', tenantId)
+  query = query.eq('tenant_id', tenantId ?? NO_TENANT)
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
   if (!name?.trim()) return NextResponse.json({ error: 'name is required' }, { status: 400 })
 
   const db = createServerClient()
-  const tenantId = agent_id ? await getAgentTenantId(db, agent_id) : null
+  const tenantId = await getAgentTenantId(db, agent_id)
 
   const { data, error } = await db
     .from('lead_sources')
@@ -38,7 +39,8 @@ export async function PATCH(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
   const db = createServerClient()
-  const { error } = await db.from('lead_sources').update({ enabled }).eq('id', id)
+  const tenantId = await getAgentTenantId(db)
+  const { error } = await db.from('lead_sources').update({ enabled }).eq('id', id).eq('tenant_id', tenantId ?? NO_TENANT)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
@@ -49,7 +51,8 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
   const db = createServerClient()
-  const { error } = await db.from('lead_sources').delete().eq('id', id)
+  const tenantId = await getAgentTenantId(db)
+  const { error } = await db.from('lead_sources').delete().eq('id', id).eq('tenant_id', tenantId ?? NO_TENANT)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

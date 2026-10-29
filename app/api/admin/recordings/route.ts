@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
+import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const agentId = searchParams.get('agent_id')
 
   const db = createServerClient()
-  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
+  const tenantId = await getAgentTenantId(db, agentId)
 
   let vmQuery = db
     .from('voicemails')
     .select('*, dialer_calls(from_number, to_number, agent_id, direction, agents(name))')
     .order('created_at', { ascending: false })
     .limit(200)
-  if (tenantId) vmQuery = vmQuery.eq('tenant_id', tenantId)
+  vmQuery = vmQuery.eq('tenant_id', tenantId ?? NO_TENANT)
 
   const { data: vms, error } = await vmQuery
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest) {
       .from('leads')
       .select('id, first_name, last_name, name, company_name, phone')
       .or(orFilter)
-    if (tenantId) leadsQuery = leadsQuery.eq('tenant_id', tenantId)
+    leadsQuery = leadsQuery.eq('tenant_id', tenantId ?? NO_TENANT)
     const { data: leads } = await leadsQuery
     for (const lead of leads || []) {
       const d = (lead.phone || '').replace(/\D/g, '')
@@ -57,7 +58,8 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'No id' }, { status: 400 })
 
   const db = createServerClient()
-  const { error } = await db.from('voicemails').delete().eq('id', id)
+  const tenantId = await getAgentTenantId(db)
+  const { error } = await db.from('voicemails').delete().eq('id', id).eq('tenant_id', tenantId ?? NO_TENANT)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

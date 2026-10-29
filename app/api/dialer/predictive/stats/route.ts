@@ -6,7 +6,7 @@ import { tenantAbandonStats, HEARTBEAT_STALE_MS } from '@/lib/predictive/engine'
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const db = createServerClient()
-  const target = await resolveTargetTenant(db, searchParams.get('agent_id'), searchParams.get('tenant_id'), { requireAdmin: true })
+  const target = await resolveTargetTenant(searchParams.get('tenant_id'), { requireAdmin: true })
   if ('error' in target) return NextResponse.json({ error: target.error }, { status: target.status })
 
   const staleCutoff = new Date(Date.now() - HEARTBEAT_STALE_MS).toISOString()

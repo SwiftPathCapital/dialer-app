@@ -9,7 +9,7 @@ import { predictiveSetupProblems } from '@/lib/predictive/engine'
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const db = createServerClient()
-  const target = await resolveTargetTenant(db, searchParams.get('agent_id'), searchParams.get('tenant_id'), { requireAdmin: false })
+  const target = await resolveTargetTenant(searchParams.get('tenant_id'), { requireAdmin: false })
   if ('error' in target) return NextResponse.json({ error: target.error }, { status: target.status })
 
   const settings = await getDialerSettings(db, target.tenantId)
@@ -28,9 +28,9 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const body = await req.json()
-  const { agent_id, tenant_id, ...patch } = body as Record<string, unknown>
+  const { agent_id: _ignored, tenant_id, ...patch } = body as Record<string, unknown>
   const db = createServerClient()
-  const target = await resolveTargetTenant(db, agent_id as string, tenant_id as string, { requireAdmin: true })
+  const target = await resolveTargetTenant(tenant_id as string, { requireAdmin: true })
   if ('error' in target) return NextResponse.json({ error: target.error }, { status: target.status })
 
   const allowed: readonly string[] = target.actor.is_platform_admin

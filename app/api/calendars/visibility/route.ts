@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { getCaller, unauthorized } from '@/lib/caller'
 
 // Toggle whether one calendar (or every calendar in a group) shows up on
 // the requesting agent's own Calendar page. Purely a per-viewer display
 // preference — has no bearing on membership/access.
 export async function POST(req: NextRequest) {
-  const { agent_id, calendar_id, calendar_ids, visible } = await req.json()
-  if (!agent_id || visible === undefined) {
-    return NextResponse.json({ error: 'agent_id and visible are required' }, { status: 400 })
+  const { calendar_id, calendar_ids, visible } = await req.json()
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  const agent_id = caller.id
+  if (visible === undefined) {
+    return NextResponse.json({ error: 'visible is required' }, { status: 400 })
   }
 
   const ids: string[] = calendar_ids ?? (calendar_id ? [calendar_id] : [])

@@ -13,7 +13,7 @@ const COLUMNS = 'id, phone_number, area_code, state, label, enabled, sms_enabled
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const db = createServerClient()
-  const target = await resolveTargetTenant(db, searchParams.get('agent_id'), searchParams.get('tenant_id'), { requireAdmin: true })
+  const target = await resolveTargetTenant(searchParams.get('tenant_id'), { requireAdmin: true })
   if ('error' in target) return NextResponse.json({ error: target.error }, { status: target.status })
 
   const { data: numbers, error } = await db
@@ -48,10 +48,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { agent_id, tenant_id, id, ...patch } = await req.json()
+  const { agent_id: _ignored, tenant_id, id, ...patch } = await req.json()
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
   const db = createServerClient()
-  const target = await resolveTargetTenant(db, agent_id, tenant_id, { requireAdmin: true })
+  const target = await resolveTargetTenant(tenant_id, { requireAdmin: true })
   if ('error' in target) return NextResponse.json({ error: target.error }, { status: target.status })
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }

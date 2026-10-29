@@ -3,6 +3,10 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { Agent, AgentStatus } from './types'
 import { supabase } from './supabase'
+import { installAuthFetch } from './authFetch'
+
+// Must run before any page's first /api request (child effects run before this provider's).
+installAuthFetch()
 
 type CallState = 'idle' | 'ringing' | 'active' | 'held'
 type RingType = 'inbound' | 'outbound' | 'group-inbound'
@@ -196,6 +200,17 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
           fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {})
         } else {
           setAgent(a)
+          // The server acts as whoever the Supabase session belongs to. If the saved profile
+          // is someone else (or there's no session), sign out rather than show the wrong account.
+          supabase.auth.getSession().then(({ data }) => {
+            if (data.session?.user.id !== a?.id) {
+              localStorage.removeItem('dialer_agent')
+              localStorage.removeItem('dialer_agent_expires')
+              supabase.auth.signOut().catch(() => {})
+              fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {})
+              setAgent(null)
+            }
+          }).catch(() => {})
           if (a?.id && a?.status) {
             fetch('/api/agents', {
               method: 'PATCH',

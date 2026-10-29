@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { getCaller, unauthorized } from '@/lib/caller'
 import { isCallableNow } from '@/lib/callingHours'
 import { COOLDOWN_MS } from '@/lib/leadQueue'
 import { getDialerSettings } from '@/lib/dialerSettings'
 import { chooseCallerId, loadCallerIds } from '@/lib/localPresence'
 
 /**
- * GET /api/calls/preflight?phone=<number>&agent_id=<id>[&bypass_cooldown=1]
+ * GET /api/calls/preflight?phone=<number>[&bypass_cooldown=1]  (for the signed-in agent)
  *
  * Runs right before every outbound dial from the browser:
  *  - 8-hour cooldown (skippable for deliberate dials like scheduled callbacks / dialpad)
@@ -16,15 +17,14 @@ import { chooseCallerId, loadCallerIds } from '@/lib/localPresence'
  */
 export async function GET(req: NextRequest) {
   const phone = req.nextUrl.searchParams.get('phone') || ''
-  const agentId = req.nextUrl.searchParams.get('agent_id')
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
   const bypassCooldown = req.nextUrl.searchParams.get('bypass_cooldown') === '1'
   const digits = phone.replace(/\D/g, '')
 
   const db = createServerClient()
-  const { data: agentRow } = agentId
-    ? await db.from('agents').select('tenant_id, did, extension, sip_username').eq('id', agentId).maybeSingle()
-    : { data: null }
-  const tenantId: string | null = agentRow?.tenant_id ?? null
+  const { data: agentRow } = await db.from('agents').select('did, extension, sip_username').eq('id', caller.id).maybeSingle()
+  const tenantId = caller.tenantId
   const fallbackCallerId: string | null = agentRow?.did || agentRow?.extension || agentRow?.sip_username || null
 
   if (digits.length < 7) return NextResponse.json({ blocked: false, callerId: fallbackCallerId })
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
     .ilike('phone', `%${digits.slice(-10)}%`)
     .order('last_called_at', { ascending: false, nullsFirst: false })
     .limit(1)
-  if (tenantId) leadQuery = leadQuery.eq('tenant_id', tenantId)
+  leadQuery = leadQuery.eq('tenant_id', tenantId)
   const { data: lead } = await leadQuery.maybeSingle()
 
   if (lead && !bypassCooldown && lead.last_called_at) {
@@ -53,12 +53,10 @@ export async function GET(req: NextRequest) {
 
   let callerId = fallbackCallerId
   let match: string = 'agent'
-  if (tenantId) {
-    const settings = await getDialerSettings(db, tenantId)
-    if (settings.local_presence_enabled) {
-      const picked = chooseCallerId(await loadCallerIds(db, tenantId), phone, lead?.state ?? null)
-      if (picked.number) { callerId = picked.number; match = picked.match }
-    }
+  const settings = await getDialerSettings(db, tenantId)
+  if (settings.local_presence_enabled) {
+    const picked = chooseCallerId(await loadCallerIds(db, tenantId), phone, lead?.state ?? null)
+    if (picked.number) { callerId = picked.number; match = picked.match }
   }
 
   return NextResponse.json({ blocked: false, callerId, match })

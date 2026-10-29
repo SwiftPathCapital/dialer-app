@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { getCaller } from '@/lib/caller'
 
-// This is the one place in the app that gets a real server-side authorization check rather
-// than trusting the client — creating a tenant + its first login is a much higher-stakes
-// action than viewing your own data, so it's worth the one exception.
-async function requirePlatformAdmin(db: ReturnType<typeof createServerClient>, agentId: string | null) {
-  if (!agentId) return false
-  const { data } = await db.from('agents').select('is_platform_admin').eq('id', agentId).single()
-  return !!data?.is_platform_admin
+// Decided by the signed-in caller (proxy also blocks non-super-admins from /api/platform).
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function requirePlatformAdmin(_db: ReturnType<typeof createServerClient>, _agentId?: string | null) {
+  return !!(await getCaller())?.isPlatformAdmin
 }
 
 export async function GET(req: NextRequest) {

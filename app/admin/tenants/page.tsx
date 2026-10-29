@@ -30,6 +30,7 @@ const TOGGLEABLE_FEATURES = [
   { href: '/admin/calls', label: 'Admin: Call Center' },
   { href: '/admin/callbacks', label: 'Admin: Callbacks' },
   { href: '/admin/calendars', label: 'Admin: Calendars' },
+  { href: '/admin/booking', label: 'Admin: Booking Pages' },
   { href: '/admin/groups', label: 'Admin: Groups' },
   { href: '/admin/tags', label: 'Admin: Tags' },
   { href: '/admin/dialer-settings', label: 'Admin: Dialer Settings' },

@@ -1,6 +1,4 @@
-import type { createServerClient } from './supabase'
-
-type Db = ReturnType<typeof createServerClient>
+import { getCaller } from './caller'
 
 export interface Actor {
   id: string
@@ -9,10 +7,11 @@ export interface Actor {
   is_platform_admin: boolean
 }
 
-export async function getActor(db: Db, agentId: string | null | undefined): Promise<Actor | null> {
-  if (!agentId) return null
-  const { data } = await db.from('agents').select('id, tenant_id, role, is_platform_admin').eq('id', agentId).maybeSingle()
-  return (data as Actor | null) ?? null
+// The signed-in user, as verified by proxy.ts — never an id the browser supplied.
+export async function getActor(): Promise<Actor | null> {
+  const caller = await getCaller()
+  if (!caller) return null
+  return { id: caller.id, tenant_id: caller.tenantId, role: caller.role, is_platform_admin: caller.isPlatformAdmin }
 }
 
 // A client's own admin may manage their tenant; the platform admin may manage any tenant.
