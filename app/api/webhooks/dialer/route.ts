@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     const isAgentLeg = state?.k === 'agent' || (!state && !!(await db.from('dialer_agent_sessions').select('id').eq('agent_call_control_id', callControlId).maybeSingle()).data)
 
     if (isAgentLeg) {
-      const sessionQuery = db.from('dialer_agent_sessions').select('id, tenant_id, status, current_attempt_id, conference_id')
+      const sessionQuery = db.from('dialer_agent_sessions').select('id, tenant_id, agent_id, status, current_attempt_id, conference_id')
       const { data: session } = state?.s
         ? await sessionQuery.eq('id', String(state.s)).maybeSingle()
         : await sessionQuery.eq('agent_call_control_id', callControlId).maybeSingle()
@@ -56,6 +56,11 @@ export async function POST(req: NextRequest) {
         if (session.status === 'on_call' && session.current_attempt_id) {
           const attempt = await loadAttempt(db, session.current_attempt_id)
           await hangupCall(attempt?.call_control_id)
+        }
+        // The connection dropped without Stop (tab closed, network lost): Start marked the
+        // agent busy, and nothing else would ever clear it — inbound groups skip busy agents.
+        if (session.status !== 'ended') {
+          await db.from('agents').update({ status: 'available', updated_at: new Date().toISOString() }).eq('id', session.agent_id).eq('status', 'busy')
         }
       }
       return NextResponse.json({ ok: true })

@@ -102,8 +102,12 @@ async function paceLocked(db: Db, tenantId: string): Promise<{ dialed: number; r
     .eq('tenant_id', tenantId)
     .in('status', ['connecting', 'ready', 'wrapup'])
     .lt('last_heartbeat_at', staleCutoff)
-    .select('agent_call_control_id')
-  for (const s of stale ?? []) await hangupCall(s.agent_call_control_id)
+    .select('agent_id, agent_call_control_id')
+  for (const s of stale ?? []) {
+    await hangupCall(s.agent_call_control_id)
+    // Start marked them busy; free them for inbound calls again (same as Stop does).
+    await db.from('agents').update({ status: 'available', updated_at: new Date().toISOString() }).eq('id', s.agent_id).eq('status', 'busy')
+  }
 
   const { data: ready } = await db
     .from('dialer_agent_sessions')
