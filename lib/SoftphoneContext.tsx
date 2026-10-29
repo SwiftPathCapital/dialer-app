@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { Agent, AgentStatus } from './types'
 import { supabase } from './supabase'
 import { installAuthFetch } from './authFetch'
+import { getSwitchedAccount, setSwitchedAccount } from './actAs'
 
 // Must run before any page's first /api request (child effects run before this provider's).
 installAuthFetch()
@@ -177,6 +178,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
         if (expiresAt && Date.now() > parseInt(expiresAt)) {
           localStorage.removeItem('dialer_agent')
           localStorage.removeItem('dialer_agent_expires')
+          setSwitchedAccount(null)
           supabase.auth.signOut().catch(() => {})
           fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {})
         } else {
@@ -187,6 +189,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
             if (data.session?.user.id !== a?.id) {
               localStorage.removeItem('dialer_agent')
               localStorage.removeItem('dialer_agent_expires')
+              setSwitchedAccount(null)
               supabase.auth.signOut().catch(() => {})
               fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {})
               setAgent(null)
@@ -651,6 +654,14 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   async function makeCall(number: string, opts?: { bypassCooldown?: boolean }): Promise<boolean> {
     if (!clientRef.current || !agent) return false
     if (dialingRef.current) return false
+    if (getSwitchedAccount()) {
+      // Calls are logged to the account you're in; placing one from a client's account as the
+      // platform admin would mix the two. (Your own inbound calls still ring.)
+      setCallErrorMsg('Switch back to your own account to place calls.')
+      if (callErrorTimerRef.current) clearTimeout(callErrorTimerRef.current)
+      callErrorTimerRef.current = setTimeout(() => setCallErrorMsg(null), 6000)
+      return false
+    }
 
     // ── 8-hour cooldown pre-flight check ─────────────────────────────────────
     // Must happen BEFORE client.newCall() so the WebRTC dial never fires when blocked.
@@ -722,6 +733,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   function addPartyCall(number: string) {
     if (!clientRef.current || !agent || !activeCallRef.current) return
     if (activeCallRef.current.state !== 'active') return
+    if (getSwitchedAccount()) return
 
     // Hold the current call and immediately move it to heldCall state
     try { activeCallRef.current.telnyxCall.hold() } catch {}
@@ -897,6 +909,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     } else {
       localStorage.removeItem('dialer_agent')
       localStorage.removeItem('dialer_agent_expires')
+      setSwitchedAccount(null)
       supabase.auth.signOut().catch(() => {})
       fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {})
     }

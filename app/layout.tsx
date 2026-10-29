@@ -6,6 +6,7 @@ import Sidebar from '@/components/Sidebar'
 import InboundAlert from '@/components/InboundAlert'
 import CallbackReminder from '@/components/CallbackReminder'
 import PageBackdrop from '@/components/PageBackdrop'
+import SwitchedAccountBanner from '@/components/SwitchedAccountBanner'
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-geist' })
 
@@ -22,7 +23,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <SoftphoneProvider>
           <div className="relative z-0 flex h-full">
             <Sidebar />
-            <main className="flex-1 overflow-auto">{children}</main>
+            <main className="flex-1 overflow-auto">
+              <SwitchedAccountBanner />
+              {children}
+            </main>
           </div>
           <InboundAlert />
           <CallbackReminder />

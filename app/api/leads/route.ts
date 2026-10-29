@@ -152,7 +152,8 @@ export async function POST(req: NextRequest) {
       lead_type:      body.lead_source    || null,
       why_funds:      body.notes          || null,
       status:         'New',
-      assigned_to:    caller.id,
+      // While switched into another account, don't assign the lead to the platform admin.
+      assigned_to:    caller.actingAs ? null : caller.id,
       created_at:     new Date().toISOString(),
       tenant_id:      caller.tenantId,
     })
