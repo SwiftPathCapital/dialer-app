@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { Agent, AgentStatus } from './types'
 import { supabase } from './supabase'
 import { installAuthFetch } from './authFetch'
+import { getSwitchedAccount, setSwitchedAccount } from './actAs'
 
 // Must run before any page's first /api request (child effects run before this provider's).
 installAuthFetch()
@@ -196,6 +197,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
         if (expiresAt && Date.now() > parseInt(expiresAt)) {
           localStorage.removeItem('dialer_agent')
           localStorage.removeItem('dialer_agent_expires')
+          setSwitchedAccount(null)
           supabase.auth.signOut().catch(() => {})
           fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {})
         } else {
@@ -206,6 +208,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
             if (data.session?.user.id !== a?.id) {
               localStorage.removeItem('dialer_agent')
               localStorage.removeItem('dialer_agent_expires')
+              setSwitchedAccount(null)
               supabase.auth.signOut().catch(() => {})
               fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {})
               setAgent(null)
@@ -778,6 +781,12 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       showCallError('Stop predictive dialing before placing a manual call.')
       return false
     }
+    if (getSwitchedAccount()) {
+      // Calls are logged to the account you're in; placing one from a client's account as the
+      // platform admin would mix the two. (Your own inbound calls still ring.)
+      showCallError('Switch back to your own account to place calls.')
+      return false
+    }
 
     // Claim the dial before the preflight await so a double-click can't place two calls.
     dialingRef.current = true
@@ -830,6 +839,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   async function addPartyCall(number: string) {
     if (!clientRef.current || !agent || !activeCallRef.current) return
     if (activeCallRef.current.state !== 'active') return
+    if (getSwitchedAccount()) { showCallError('Switch back to your own account to place calls.'); return }
     const pre = await preflightDial(number, true)
     if (!pre.ok || !clientRef.current || activeCallRef.current?.state !== 'active') return
 
@@ -1007,6 +1017,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     } else {
       localStorage.removeItem('dialer_agent')
       localStorage.removeItem('dialer_agent_expires')
+      setSwitchedAccount(null)
       supabase.auth.signOut().catch(() => {})
       fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {})
     }

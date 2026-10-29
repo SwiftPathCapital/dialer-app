@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { getCaller, unauthorized } from '@/lib/caller'
+import { getCaller, unauthorized, switchedAccount } from '@/lib/caller'
 import { isCallableNow } from '@/lib/callingHours'
 import { COOLDOWN_MS } from '@/lib/leadQueue'
 import { getDialerSettings } from '@/lib/dialerSettings'
@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
   const phone = req.nextUrl.searchParams.get('phone') || ''
   const caller = await getCaller()
   if (!caller) return unauthorized()
+  if (caller.actingAs) return switchedAccount()
   const bypassCooldown = req.nextUrl.searchParams.get('bypass_cooldown') === '1'
   const digits = phone.replace(/\D/g, '')
 

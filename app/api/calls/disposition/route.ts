@@ -9,7 +9,9 @@ export async function POST(req: NextRequest) {
   const caller = await getCaller()
   if (!caller) return unauthorized()
   const agent_id = caller.id
-  const tenantId = caller.tenantId
+  // Dispositions are for the caller's own calls, which live in their home tenant even
+  // while they're switched into another account.
+  const tenantId = caller.homeTenantId
   const db = createServerClient()
 
   // Ignore a lead id from another account.

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { getCaller, unauthorized } from '@/lib/caller'
+import { getCaller, unauthorized, switchedAccount } from '@/lib/caller'
 import { getConfigValue } from '@/lib/telnyx'
 import { telnyxRequest, encodeClientState } from '@/lib/telnyxApi'
 import { getDialerSettings } from '@/lib/dialerSettings'
@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
   if (!agent) return NextResponse.json({ error: 'Unknown agent' }, { status: 404 })
 
   if (action === 'start') {
+    if (caller.actingAs) return switchedAccount()
     const settings = await getDialerSettings(db, agent.tenant_id)
     if (!settings.predictive_enabled) return NextResponse.json({ error: 'Predictive dialing is not turned on for your account.' }, { status: 403 })
     const problems = await predictiveSetupProblems()

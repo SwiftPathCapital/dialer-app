@@ -12,6 +12,11 @@ export interface Caller {
   tenantId: string
   role: 'admin' | 'agent'
   isPlatformAdmin: boolean
+  // True while a platform admin is working inside another account (tenantId is that
+  // account; homeTenantId is their own). Personal actions — placing calls, owning events —
+  // are refused while switched so no row mixes one account's agent with another's data.
+  actingAs: boolean
+  homeTenantId: string
 }
 
 export async function getCaller(): Promise<Caller | null> {
@@ -20,11 +25,14 @@ export async function getCaller(): Promise<Caller | null> {
   const id = h.get(CALLER_HEADERS.id)
   const tenantId = h.get(CALLER_HEADERS.tenant)
   if (!id || !tenantId) return null
+  const homeTenantId = h.get(CALLER_HEADERS.homeTenant) || tenantId
   return {
     id,
     tenantId,
     role: h.get(CALLER_HEADERS.role) === 'admin' ? 'admin' : 'agent',
     isPlatformAdmin: h.get(CALLER_HEADERS.platformAdmin) === '1',
+    actingAs: homeTenantId !== tenantId,
+    homeTenantId,
   }
 }
 
@@ -35,6 +43,7 @@ export function isAdmin(c: Caller | null): boolean {
 export const unauthorized = () => NextResponse.json({ error: 'Please sign in again.', code: 'session_required' }, { status: 401 })
 export const forbidden = (msg = 'You don\'t have permission to do that.') => NextResponse.json({ error: msg }, { status: 403 })
 export const notFound = (msg = 'Not found') => NextResponse.json({ error: msg }, { status: 404 })
+export const switchedAccount = () => NextResponse.json({ error: 'Switch back to your own account to do this.', code: 'acting_as' }, { status: 409 })
 
 // The tenant a request acts in. For signed-in requests this is ALWAYS the caller's own
 // tenant — whatever agent id the browser sent is ignored. Without a signed-in caller
