@@ -69,7 +69,6 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const [conferenceStatus, setConferenceStatus] = useState<ConferenceStatus>('idle')
   const callErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const conferenceAudioCtxRef = useRef<AudioContext | null>(null)
-  const inboundNotifRef = useRef<Notification | null>(null)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const clientRef = useRef<any>(null)
@@ -266,7 +265,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
           if (activeCallRef.current !== null) {
             // ── CALL WAITING ─────────────────────────────────────────────────
             // Already on a call — queue this as the waiting call instead of rejecting
-            console.log('[Telnyx] call waiting:', call.id, 'from', remoteNumber)
+            console.debug('[Telnyx] call waiting:', call.id)
             setWaitingCall({
               id: call.id,
               direction: 'inbound',
@@ -292,8 +291,6 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
           }
 
           // ── NORMAL INBOUND RINGING ────────────────────────────────────────
-          console.log('[Telnyx] ringing call.options:', JSON.stringify(call.options))
-          console.log('[Telnyx] callerName:', callerName, '→ groupName:', groupName)
           setActiveCall({
             id: call.id,
             direction: 'inbound',
@@ -396,7 +393,6 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
               audio.srcObject = call.remoteStream
               audio.play().catch(console.error)
             } else {
-              const retryId = call.id
               setTimeout(() => {
                 const cur = activeCallRef.current
                 if (cur?.state === 'active' && cur.telnyxCall?.remoteStream) {
@@ -487,7 +483,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
           // original INVITE, so we must not require an exact match in the ringing state.
           if (activeCallRef.current && call.id !== activeCallRef.current.id) {
             if (activeCallRef.current.state !== 'ringing') {
-              console.log('[Telnyx] ignoring hangup for non-active leg', call.id)
+              console.debug('[Telnyx] ignoring hangup for non-active leg', call.id)
               return
             }
           }
