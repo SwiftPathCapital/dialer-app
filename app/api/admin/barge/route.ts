@@ -65,7 +65,6 @@ export async function POST(req: NextRequest) {
     webhook_url: `${appUrl}/api/webhooks/voice/barge-answer`,
     client_state: clientState,
   }
-  console.log('[barge] dialing admin:', JSON.stringify(dialPayload))
 
   const dialRes = await fetch('https://api.telnyx.com/v2/calls', {
     method: 'POST',
@@ -73,9 +72,9 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify(dialPayload),
   })
   const dialData = await dialRes.json()
-  console.log('[barge] telnyx response:', dialRes.status, JSON.stringify(dialData))
 
   if (!dialRes.ok) {
+    console.error('[barge] Telnyx dial failed:', dialRes.status, JSON.stringify(dialData))
     return NextResponse.json({ error: dialData.errors?.[0]?.detail || 'Could not call admin.' }, { status: 500 })
   }
 
