@@ -31,17 +31,21 @@ export default function CallbacksPage() {
   const router = useRouter()
   const [callbacks, setCallbacks] = useState<Callback[]>([])
   const [loading, setLoading] = useState(true)
-  const [statusFilter, setStatusFilter] = useState<'pending' | 'completed' | 'all'>('pending')
   const [showCompleted, setShowCompleted] = useState(false)
 
   const load = useCallback(() => {
     if (!agent) return
-    const params = new URLSearchParams({ agent_id: agent.id, status: statusFilter === 'all' ? 'all' : statusFilter })
-    fetch(`/api/callbacks?${params}`)
+    // Pending and completed both render below (completed in a collapsible section).
+    fetch('/api/callbacks?status=all')
       .then(r => r.json())
       .then(d => { setCallbacks(Array.isArray(d) ? d : []); setLoading(false) })
       .catch(() => setLoading(false))
-  }, [agent, statusFilter])
+  }, [agent])
+
+  function callBack(number: string) {
+    if (activeCall) return
+    makeCall(number.replace(/\D/g, '').replace(/^1?(\d{10})$/, '+1$1'), { bypassCooldown: true })
+  }
 
   useEffect(() => {
     if (agentLoading) return
@@ -92,7 +96,7 @@ export default function CallbacksPage() {
             <section>
               <p className="text-red-400 text-xs font-semibold uppercase tracking-widest mb-3">Overdue</p>
               <div className="space-y-2">
-                {overdue.map(cb => <CallbackCard key={cb.id} cb={cb} onDone={markDone} onDelete={deleteCallback} onCall={n => { if (!activeCall) { const e164 = n.replace(/\D/g, '').replace(/^1?(\d{10})$/, '+1$1'); makeCall(e164, { bypassCooldown: true }) } }} activeCall={!!activeCall} />)}
+                {overdue.map(cb => <CallbackCard key={cb.id} cb={cb} onDone={markDone} onDelete={deleteCallback} onCall={callBack} activeCall={!!activeCall} />)}
               </div>
             </section>
           )}
@@ -101,7 +105,7 @@ export default function CallbacksPage() {
             <section>
               <p className="text-gray-400 text-xs font-semibold uppercase tracking-widest mb-3">Upcoming</p>
               <div className="space-y-2">
-                {upcoming.map(cb => <CallbackCard key={cb.id} cb={cb} onDone={markDone} onDelete={deleteCallback} onCall={n => { if (!activeCall) { const e164 = n.replace(/\D/g, '').replace(/^1?(\d{10})$/, '+1$1'); makeCall(e164, { bypassCooldown: true }) } }} activeCall={!!activeCall} />)}
+                {upcoming.map(cb => <CallbackCard key={cb.id} cb={cb} onDone={markDone} onDelete={deleteCallback} onCall={callBack} activeCall={!!activeCall} />)}
               </div>
             </section>
           )}

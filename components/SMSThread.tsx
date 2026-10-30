@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Send } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { SMSConversation, SMSMessage } from '@/lib/types'
-import { useSoftphone } from '@/lib/SoftphoneContext'
 
 interface Props {
   conversation: SMSConversation
@@ -15,7 +14,6 @@ export default function SMSThread({ conversation }: Props) {
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
-  const { agent } = useSoftphone()
 
   useEffect(() => {
     fetch(`/api/sms?conversation_id=${conversation.id}`)
