@@ -1,7 +1,7 @@
 import Telnyx from 'telnyx'
 import { createServerClient } from './supabase'
 
-async function getConfigValue(key: string): Promise<string | null> {
+export async function getConfigValue(key: string): Promise<string | null> {
   const db = createServerClient()
   const { data } = await db.from('app_config').select('value').eq('key', key).single()
   return data?.value ?? null

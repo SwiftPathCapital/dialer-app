@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { getCaller, unauthorized } from '@/lib/caller'
+import { pointInTenant } from '@/lib/moistureAccess'
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
   const db = createServerClient()
+  if (!(await pointInTenant(db, id, caller.tenantId))) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   const { data, error } = await db
     .from('moisture_readings')
     .select('id, point_id, moisture_level, notes, recorded_by, recorded_at')
@@ -17,20 +22,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const body = await req.json()
-  const { agent_id, moisture_level, notes } = body
+  const { moisture_level, notes } = body
 
   if (moisture_level === undefined || moisture_level === null || moisture_level === '') {
     return NextResponse.json({ error: 'moisture_level is required' }, { status: 400 })
   }
 
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
   const db = createServerClient()
+  if (!(await pointInTenant(db, id, caller.tenantId))) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   const { data, error } = await db
     .from('moisture_readings')
     .insert({
       point_id: id,
       moisture_level,
       notes: notes || null,
-      recorded_by: agent_id || null,
+      recorded_by: caller.id,
       // recorded_at defaults to now() server-side — this is the "auto pull date and time" behavior
     })
     .select()

@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
+import { getCaller, unauthorized } from '@/lib/caller'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const agentId = searchParams.get('agent_id')
   const leadId = searchParams.get('lead_id')
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
 
   const db = createServerClient()
-  const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
 
   let query = db
     .from('moisture_projects')
     .select('id, lead_id, name, status, floor_plan_type, floor_plan_image_url, created_at, updated_at, lead:leads(id, name, first_name, last_name, company_name, phone)')
     .order('updated_at', { ascending: false })
 
-  if (tenantId) query = query.eq('tenant_id', tenantId)
+  query = query.eq('tenant_id', caller.tenantId)
   if (leadId) query = query.eq('lead_id', leadId)
 
   const { data: projects, error } = await query
@@ -38,15 +39,19 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { agent_id, lead_id, name } = body
+  const { lead_id, name } = body
 
   if (!lead_id || !name?.trim()) {
     return NextResponse.json({ error: 'lead_id and name are required' }, { status: 400 })
   }
 
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  const tenantId = caller.tenantId
+
   const db = createServerClient()
-  const tenantId = agent_id ? await getAgentTenantId(db, agent_id) : null
-  if (!tenantId) return NextResponse.json({ error: 'agent_id is required' }, { status: 400 })
+  const { data: lead } = await db.from('leads').select('id').eq('id', lead_id).eq('tenant_id', tenantId).maybeSingle()
+  if (!lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
 
   const { data, error } = await db
     .from('moisture_projects')
@@ -54,7 +59,7 @@ export async function POST(req: NextRequest) {
       tenant_id: tenantId,
       lead_id,
       name: name.trim(),
-      created_by: agent_id,
+      created_by: caller.id,
     })
     .select()
     .single()

@@ -3,11 +3,13 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock, CalendarDays, List, Tag, Orbit, Building2, Droplets, Contact, QrCode, Workflow, ChevronLeft, ChevronRight, Link2, KeyRound } from 'lucide-react'
+import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock, CalendarDays, List, Tag, Orbit, Building2, Droplets, Contact, QrCode, Workflow, ChevronLeft, ChevronRight, Radar, Link2, KeyRound } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import { supabase } from '@/lib/supabase'
 import Tour from '@/components/Tour'
 import ChangePasswordModal from '@/components/ChangePasswordModal'
+import AccountSwitcher from '@/components/AccountSwitcher'
+import { getSwitchedAccount } from '@/lib/actAs'
 
 // Emoji picks lean into the app's own visual language — orbit/satellite, signal,
 // crystalline nodes (echoing the Apex mark's hex-node motif) — rather than generic
@@ -35,6 +37,7 @@ const ADMIN_NAV = [
   { href: '/admin/workflows',  icon: Workflow,           label: 'Workflows',  dataTour: '', emoji: '🔀' },
   { href: '/admin/groups',     icon: Users,              label: 'Groups',     dataTour: 'nav-groups', emoji: '🌐' },
   { href: '/admin/tags',       icon: Tag,                label: 'Tags',       dataTour: '', emoji: '🏷️' },
+  { href: '/admin/dialer-settings', icon: Radar,          label: 'Dialer Settings', dataTour: '', emoji: '📡' },
   { href: '/admin/config',     icon: SlidersHorizontal,  label: 'Config',     dataTour: '', emoji: '⚙️' },
 ]
 
@@ -101,6 +104,8 @@ export default function Sidebar() {
   const [unreadVoicemails, setUnreadVoicemails] = useState(0)
   const [collapsed, setCollapsed] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
+  const [switchedHidden, setSwitchedHidden] = useState<string[] | null>(null)
+  useEffect(() => { setSwitchedHidden(getSwitchedAccount()?.hidden_features ?? null) }, [])
 
   useEffect(() => {
     if (localStorage.getItem('dialer_sidebar_collapsed') === '1') setCollapsed(true)
@@ -150,7 +155,9 @@ export default function Sidebar() {
 
   // Tenant-level hides are a baseline every agent in that tenant inherits, on top of
   // whatever an admin has hidden for that specific agent.
-  const hiddenFeatures = [...(agent?.hidden_features ?? []), ...(agent?.tenant_hidden_features ?? [])]
+  // While the platform admin is switched into a client, show that client's account-level hides.
+  const tenantHidden = switchedHidden ?? agent?.tenant_hidden_features ?? []
+  const hiddenFeatures = [...(agent?.hidden_features ?? []), ...tenantHidden]
 
   const initials = agent?.name?.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() ?? '?'
   const statusRing = agent?.status === 'available' ? 'ring-green-400/60 shadow-[0_0_16px_rgba(74,222,128,0.5)]'
@@ -195,6 +202,7 @@ export default function Sidebar() {
         <span className={`${lbl} font-bold text-lg tracking-wide bg-gradient-to-r from-cyan-300 via-teal-200 to-purple-300 bg-clip-text text-transparent`}>
           Dialer
         </span>
+        <AccountSwitcher collapsed={collapsed} />
       </div>
 
       {/* Nav */}
@@ -237,7 +245,7 @@ export default function Sidebar() {
         {agent?.role === 'admin' && (
           <div className="mt-auto pt-4 border-t border-cyan-500/10 space-y-0.5">
             <p className={`${lbl} text-transparent bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-xs uppercase tracking-widest px-3 pb-1 font-semibold`}>Admin</p>
-            {ADMIN_NAV.filter(({ href }) => !agent?.tenant_hidden_features?.includes(href)).map(({ href, icon: Icon, label, dataTour, emoji }) => {
+            {ADMIN_NAV.filter(({ href }) => !tenantHidden.includes(href)).map(({ href, icon: Icon, label, dataTour, emoji }) => {
               const active = pathname.startsWith(href)
               return (
                 <Link

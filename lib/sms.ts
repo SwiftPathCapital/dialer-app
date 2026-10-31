@@ -1,5 +1,8 @@
-import { createServerClient, getAgentTenantId } from './supabase'
+import { createServerClient } from './supabase'
+import { getAgentTenantId } from './caller'
 import { getTelnyxClient } from './telnyx'
+import { getDialerSettings } from './dialerSettings'
+import { chooseCallerId, loadCallerIds } from './localPresence'
 
 interface SendSmsParams {
   from: string
@@ -10,9 +13,22 @@ interface SendSmsParams {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function sendSms({ from, to, body, agentId, conversationId }: SendSmsParams): Promise<any> {
+export async function sendSms({ from: requestedFrom, to, body, agentId, conversationId }: SendSmsParams): Promise<any> {
   const db = createServerClient()
   const tenantId = agentId ? await getAgentTenantId(db, agentId) : null
+
+  // Local-number texting add-on: a brand-new thread starts from the lead's local presence
+  // number (if one is SMS-enabled). Existing threads keep whatever number they're on so the
+  // contact never sees the conversation jump numbers.
+  let from = requestedFrom
+  if (!conversationId && tenantId && (await getDialerSettings(db, tenantId)).local_presence_sms_enabled) {
+    const digits = to.replace(/\D/g, '').slice(-10)
+    const { data: lead } = digits.length === 10
+      ? await db.from('leads').select('state').eq('tenant_id', tenantId).ilike('phone', `%${digits}%`).limit(1).maybeSingle()
+      : { data: null }
+    const picked = chooseCallerId(await loadCallerIds(db, tenantId), to, lead?.state ?? null, { requireSms: true })
+    if (picked.number) from = picked.number
+  }
 
   // Send via Telnyx first — don't create a conversation record for a message that never went out
   const telnyx = await getTelnyxClient()

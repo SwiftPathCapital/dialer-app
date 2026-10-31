@@ -3,6 +3,11 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { Agent, AgentStatus } from './types'
 import { supabase } from './supabase'
+import { installAuthFetch } from './authFetch'
+import { getSwitchedAccount, setSwitchedAccount } from './actAs'
+
+// Must run before any page's first /api request (child effects run before this provider's).
+installAuthFetch()
 
 type CallState = 'idle' | 'ringing' | 'active' | 'held'
 type RingType = 'inbound' | 'outbound' | 'group-inbound'
@@ -48,6 +53,21 @@ interface SoftphoneContextValue {
   /** Set when makeCall is blocked (e.g. 8-hour cooldown). Auto-clears after 6 s. */
   callErrorMsg: string | null
   clearCallError: () => void
+  /** The predictive dialer's always-on connection to this agent, kept apart from activeCall. */
+  predictiveCall: PredictiveLeg | null
+  /** Auto-answer the predictive dialer's connection call (from `expectFrom`) once it rings. */
+  armPredictive: (expectFrom: string | null) => void
+  /** Stop auto-answering and drop the predictive connection if it's up. */
+  disarmPredictive: () => void
+  predictiveMuted: boolean
+  togglePredictiveMute: () => void
+}
+
+export interface PredictiveLeg {
+  id: string
+  state: 'connecting' | 'active'
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  telnyxCall: any
 }
 
 const SoftphoneContext = createContext<SoftphoneContextValue | null>(null)
@@ -62,9 +82,12 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   const [muted, setMuted] = useState(false)
   const [callErrorMsg, setCallErrorMsg] = useState<string | null>(null)
   const [conferenceStatus, setConferenceStatus] = useState<ConferenceStatus>('idle')
+  const [predictiveCall, setPredictiveCall] = useState<PredictiveLeg | null>(null)
+  const [predictiveMuted, setPredictiveMuted] = useState(false)
+  const predictiveArmedRef = useRef<{ from: string | null } | null>(null)
+  const predictiveCallRef = useRef<PredictiveLeg | null>(null)
   const callErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const conferenceAudioCtxRef = useRef<AudioContext | null>(null)
-  const inboundNotifRef = useRef<Notification | null>(null)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const clientRef = useRef<any>(null)
@@ -173,10 +196,23 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
         if (expiresAt && Date.now() > parseInt(expiresAt)) {
           localStorage.removeItem('dialer_agent')
           localStorage.removeItem('dialer_agent_expires')
+          setSwitchedAccount(null)
           supabase.auth.signOut().catch(() => {})
           fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {})
         } else {
           setAgent(a)
+          // The server acts as whoever the Supabase session belongs to. If the saved profile
+          // is someone else (or there's no session), sign out rather than show the wrong account.
+          supabase.auth.getSession().then(({ data }) => {
+            if (data.session?.user.id !== a?.id) {
+              localStorage.removeItem('dialer_agent')
+              localStorage.removeItem('dialer_agent_expires')
+              setSwitchedAccount(null)
+              supabase.auth.signOut().catch(() => {})
+              fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {})
+              setAgent(null)
+            }
+          }).catch(() => {})
           if (a?.id && a?.status) {
             fetch('/api/agents', {
               method: 'PATCH',
@@ -240,6 +276,27 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
           // Outbound 180 Ringing — ignore
           if (outboundCallIdRef.current === call.id) return
 
+          // ── PREDICTIVE: the dialer's connection call — answer it silently ──
+          const armed = predictiveArmedRef.current
+          if (armed && !predictiveCallRef.current) {
+            const remoteName: string = call.options?.remoteCallerName || ''
+            const remoteDigits = String(call.options?.remoteCallerNumber || '').replace(/\D/g, '').slice(-10)
+            const expectDigits = (armed.from || '').replace(/\D/g, '').slice(-10)
+            if (remoteName.startsWith('PREDICTIVE') || (expectDigits && remoteDigits === expectDigits)) {
+              const leg: PredictiveLeg = { id: call.id, state: 'connecting', telnyxCall: call }
+              predictiveCallRef.current = leg
+              setPredictiveCall(leg)
+              try { call.answer() } catch (err) { console.error('[predictive] answer failed', err) }
+              return
+            }
+          }
+          // While in a predictive session the agent can't take other calls — decline so
+          // group calls ring the next agent and direct calls go to voicemail.
+          if (predictiveCallRef.current) {
+            try { call.hangup() } catch {}
+            return
+          }
+
           const callerName: string = call.options?.remoteCallerName || ''
           const groupName = callerName.startsWith('GROUP:') ? callerName.slice(6) : undefined
           const groupObj = groupName ? groupsRef.current.find(g => g.name === groupName) : undefined
@@ -248,7 +305,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
           if (activeCallRef.current !== null) {
             // ── CALL WAITING ─────────────────────────────────────────────────
             // Already on a call — queue this as the waiting call instead of rejecting
-            console.log('[Telnyx] call waiting:', call.id, 'from', remoteNumber)
+            console.debug('[Telnyx] call waiting:', call.id)
             setWaitingCall({
               id: call.id,
               direction: 'inbound',
@@ -274,8 +331,6 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
           }
 
           // ── NORMAL INBOUND RINGING ────────────────────────────────────────
-          console.log('[Telnyx] ringing call.options:', JSON.stringify(call.options))
-          console.log('[Telnyx] callerName:', callerName, '→ groupName:', groupName)
           setActiveCall({
             id: call.id,
             direction: 'inbound',
@@ -335,6 +390,13 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
 
         // ── ACTIVE ───────────────────────────────────────────────────────────
         } else if (call.state === 'active') {
+          if (predictiveCallRef.current && call.id === predictiveCallRef.current.id) {
+            const leg: PredictiveLeg = { ...predictiveCallRef.current, state: 'active', telnyxCall: call }
+            predictiveCallRef.current = leg
+            setPredictiveCall(leg)
+            attachRemoteAudio(call)
+            return
+          }
           stopRing()
           callActiveAtRef.current = Date.now()
 
@@ -378,7 +440,6 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
               audio.srcObject = call.remoteStream
               audio.play().catch(console.error)
             } else {
-              const retryId = call.id
               setTimeout(() => {
                 const cur = activeCallRef.current
                 if (cur?.state === 'active' && cur.telnyxCall?.remoteStream) {
@@ -452,6 +513,14 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
 
         // ── HANGUP / DESTROY ─────────────────────────────────────────────────
         } else if (call.state === 'hangup' || call.state === 'destroy') {
+          if (predictiveCallRef.current && call.id === predictiveCallRef.current.id) {
+            predictiveCallRef.current = null
+            setPredictiveCall(null)
+            setPredictiveMuted(false)
+            const audio = document.getElementById('telnyx-remote-audio') as HTMLAudioElement
+            if (audio) { audio.srcObject = null; audio.remove() }
+            return
+          }
           // Waiting call was declined/timed out remotely
           if (waitingCallRef.current && call.id === waitingCallRef.current.id) {
             setWaitingCall(null)
@@ -469,7 +538,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
           // original INVITE, so we must not require an exact match in the ringing state.
           if (activeCallRef.current && call.id !== activeCallRef.current.id) {
             if (activeCallRef.current.state !== 'ringing') {
-              console.log('[Telnyx] ignoring hangup for non-active leg', call.id)
+              console.debug('[Telnyx] ignoring hangup for non-active leg', call.id)
               return
             }
           }
@@ -526,6 +595,40 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   }, [agent?.sip_username, agent?.sip_password])
 
   // ── Audio helpers ─────────────────────────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function attachRemoteAudio(call: any, retry = true) {
+    if (!call.remoteStream) {
+      if (retry) setTimeout(() => attachRemoteAudio(call, false), 1000)
+      return
+    }
+    let audio = document.getElementById('telnyx-remote-audio') as HTMLAudioElement
+    if (!audio) {
+      audio = document.createElement('audio')
+      audio.id = 'telnyx-remote-audio'
+      audio.autoplay = true
+      document.body.appendChild(audio)
+    }
+    audio.srcObject = call.remoteStream
+    audio.play().catch(console.error)
+  }
+
+  function armPredictive(expectFrom: string | null) {
+    predictiveArmedRef.current = { from: expectFrom }
+  }
+
+  function disarmPredictive() {
+    predictiveArmedRef.current = null
+    const leg = predictiveCallRef.current
+    if (leg) { try { leg.telnyxCall.hangup() } catch {} }
+  }
+
+  function togglePredictiveMute() {
+    const leg = predictiveCallRef.current
+    if (!leg) return
+    try { if (predictiveMuted) leg.telnyxCall.unmuteAudio(); else leg.telnyxCall.muteAudio() } catch {}
+    setPredictiveMuted(m => !m)
+  }
+
   function startRing(type: RingType) {
     stopRing()
     if (typeof window === 'undefined') return
@@ -633,42 +736,67 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
   }
 
   // ── Public call actions ───────────────────────────────────────────────────
+  function showCallError(msg: string) {
+    setCallErrorMsg(msg)
+    if (callErrorTimerRef.current) clearTimeout(callErrorTimerRef.current)
+    callErrorTimerRef.current = setTimeout(() => setCallErrorMsg(null), 6000)
+  }
+
+  // ── Pre-flight: cooldown + calling hours + caller ID ─────────────────────
+  // Must run BEFORE client.newCall() so the WebRTC dial never fires when blocked.
+  // bypassCooldown (scheduled callbacks, dialpad, redial, add-party) skips only the 8-hour
+  // cooldown — calling hours in the lead's time zone always apply. If the check can't be
+  // completed the call is NOT placed: calling hours are a legal limit, so this fails closed.
+  async function preflightDial(number: string, bypassCooldown: boolean): Promise<{ ok: true; callerNumber: string } | { ok: false }> {
+    const fallback: string = agent?.did || agent?.extension || agent?.sip_username || ''
+    const digits = number.replace(/\D/g, '')
+    if (digits.length < 7) return { ok: true, callerNumber: fallback }
+    try {
+      const params = new URLSearchParams({ phone: digits })
+      if (bypassCooldown) params.set('bypass_cooldown', '1')
+      const res = await fetch(`/api/calls/preflight?${params}`)
+      if (!res.ok) throw new Error(`preflight ${res.status}`)
+      const check = await res.json()
+      if (check.blocked) {
+        showCallError(check.reason === 'calling_hours'
+          ? check.message || 'Outside calling hours for this lead.'
+          : `This lead cannot be called again until ${new Date(check.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} (8-hour cooldown after disposition).`)
+        return { ok: false }
+      }
+      return { ok: true, callerNumber: check.callerId || fallback }
+    } catch {
+      showCallError("Couldn't check calling hours for this number. Try again in a moment.")
+      return { ok: false }
+    }
+  }
+
   async function makeCall(number: string, opts?: { bypassCooldown?: boolean }): Promise<boolean> {
     if (!clientRef.current || !agent) return false
     if (dialingRef.current) return false
-
-    // ── 8-hour cooldown pre-flight check ─────────────────────────────────────
-    // Must happen BEFORE client.newCall() so the WebRTC dial never fires when blocked.
-    // Bypass when the agent explicitly chose to call (e.g. from a scheduled callback).
-    const digits = number.replace(/\D/g, '')
-    if (digits.length >= 7 && !opts?.bypassCooldown) {
-      try {
-        const res = await fetch(`/api/calls/cooldown?phone=${digits}${agent?.id ? `&agent_id=${agent.id}` : ''}`)
-        if (res.ok) {
-          const check = await res.json()
-          if (check.blocked) {
-            const until = new Date(check.until)
-            const timeStr = until.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-            const msg = `This lead cannot be called again until ${timeStr} (8-hour cooldown after disposition).`
-            setCallErrorMsg(msg)
-            if (callErrorTimerRef.current) clearTimeout(callErrorTimerRef.current)
-            callErrorTimerRef.current = setTimeout(() => setCallErrorMsg(null), 6000)
-            return false
-          }
-        }
-      } catch {
-        // Network error — let the call proceed rather than silently block
-      }
+    if (predictiveCallRef.current || predictiveArmedRef.current) {
+      showCallError('Stop predictive dialing before placing a manual call.')
+      return false
+    }
+    if (getSwitchedAccount()) {
+      // Calls are logged to the account you're in; placing one from a client's account as the
+      // platform admin would mix the two. (Your own inbound calls still ring.)
+      showCallError('Switch back to your own account to place calls.')
+      return false
     }
 
+    // Claim the dial before the preflight await so a double-click can't place two calls.
     dialingRef.current = true
+    const pre = await preflightDial(number, !!opts?.bypassCooldown)
+    if (!pre.ok) { dialingRef.current = false; return false }
+    const callerNumber = pre.callerNumber
+
     setAgentBusy()
 
     let call: any
     try {
       call = clientRef.current.newCall({
         destinationNumber: number,
-        callerNumber: agent.did || agent.extension || agent.sip_username,
+        callerNumber,
       })
     } catch (err) {
       console.error('newCall failed', err)
@@ -681,7 +809,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from_number: agent.extension || agent.sip_username,
+        from_number: callerNumber,
         to_number: number,
         agent_id: agent.id,
         telnyx_call_control_id: call.id,
@@ -704,9 +832,12 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     setCallErrorMsg(null)
   }
 
-  function addPartyCall(number: string) {
+  async function addPartyCall(number: string) {
     if (!clientRef.current || !agent || !activeCallRef.current) return
     if (activeCallRef.current.state !== 'active') return
+    if (getSwitchedAccount()) { showCallError('Switch back to your own account to place calls.'); return }
+    const pre = await preflightDial(number, true)
+    if (!pre.ok || !clientRef.current || activeCallRef.current?.state !== 'active') return
 
     // Hold the current call and immediately move it to heldCall state
     try { activeCallRef.current.telnyxCall.hold() } catch {}
@@ -717,7 +848,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     // Dial the new party via WebRTC
     const call = clientRef.current.newCall({
       destinationNumber: number,
-      callerNumber: agent.did || agent.extension || agent.sip_username,
+      callerNumber: pre.callerNumber,
     })
     outboundCallIdRef.current = call.id
 
@@ -736,7 +867,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from_number: agent.extension || agent.sip_username,
+        from_number: pre.callerNumber,
         to_number: number,
         agent_id: agent.id,
         telnyx_call_control_id: call.id,
@@ -882,6 +1013,7 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
     } else {
       localStorage.removeItem('dialer_agent')
       localStorage.removeItem('dialer_agent_expires')
+      setSwitchedAccount(null)
       supabase.auth.signOut().catch(() => {})
       fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {})
     }
@@ -910,6 +1042,11 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       muted,
       callErrorMsg,
       clearCallError,
+      predictiveCall,
+      armPredictive,
+      disarmPredictive,
+      predictiveMuted,
+      togglePredictiveMute,
     }}>
       {children}
     </SoftphoneContext.Provider>

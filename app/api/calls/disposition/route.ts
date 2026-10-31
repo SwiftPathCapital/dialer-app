@@ -1,13 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
+import { getCaller, unauthorized } from '@/lib/caller'
 import { runWorkflowsForDisposition } from '@/lib/workflows'
 
 export async function POST(req: NextRequest) {
-  const { lead_phone, lead_id, agent_id, disposition, notes, callback_at } = await req.json()
+  const body = await req.json()
+  const { lead_phone, disposition, notes, callback_at } = body
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  const agent_id = caller.id
+  // Dispositions are for the caller's own calls, which live in their home tenant even
+  // while they're switched into another account.
+  const tenantId = caller.homeTenantId
   const db = createServerClient()
-  const tenantId = agent_id ? await getAgentTenantId(db, agent_id) : null
 
-  const digits = lead_phone.replace(/\D/g, '')
+  // Ignore a lead id from another account.
+  let lead_id: string | null = null
+  if (body.lead_id) {
+    const { data: lead } = await db.from('leads').select('id').eq('id', body.lead_id).eq('tenant_id', tenantId).maybeSingle()
+    lead_id = lead?.id ?? null
+  }
+
+  const digits = (lead_phone || '').replace(/\D/g, '')
 
   // Find the most recent call involving this number for this specific agent.
   // Filtering by agent_id prevents two agents calling the same number simultaneously
@@ -17,6 +31,7 @@ export async function POST(req: NextRequest) {
     .from('dialer_calls')
     .select('id, duration_seconds, started_at')
     .ilike('to_number', `%${digits}%`)
+    .eq('tenant_id', tenantId)
     .not('telnyx_call_control_id', 'is', null)
     .order('started_at', { ascending: false })
     .limit(1)
@@ -25,14 +40,13 @@ export async function POST(req: NextRequest) {
     .from('dialer_calls')
     .select('id, duration_seconds, started_at')
     .ilike('from_number', `%${digits}%`)
+    .eq('tenant_id', tenantId)
     .not('telnyx_call_control_id', 'is', null)
     .order('started_at', { ascending: false })
     .limit(1)
 
-  if (agent_id) {
-    outboundQuery = outboundQuery.eq('agent_id', agent_id)
-    inboundQuery = inboundQuery.eq('agent_id', agent_id)
-  }
+  outboundQuery = outboundQuery.eq('agent_id', agent_id)
+  inboundQuery = inboundQuery.eq('agent_id', agent_id)
 
   const { data: outboundCalls } = await outboundQuery
   const { data: inboundCalls } = await inboundQuery
@@ -42,12 +56,12 @@ export async function POST(req: NextRequest) {
   candidates.sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
   const calls = candidates.length ? [candidates[0]] : []
 
-  if (calls?.[0]) {
+  if (digits && calls?.[0]) {
     await db.from('dialer_calls')
       .update({ disposition, notes: notes || null })
       .eq('id', calls[0].id)
 
-    if (lead_id && agent_id) {
+    if (lead_id) {
       // Look up agent name for lead_comments
       const { data: agentRow } = await db
         .from('agents')
@@ -65,6 +79,7 @@ export async function POST(req: NextRequest) {
       await Promise.all([
         // CRM activities log
         db.from('activities').insert({
+          tenant_id: tenantId,
           lead_id,
           agent_id,
           type: 'call',
@@ -74,6 +89,7 @@ export async function POST(req: NextRequest) {
         }),
         // CRM notes section
         db.from('lead_comments').insert({
+          tenant_id: tenantId,
           lead_id,
           agent_id,
           agent_name: agentName,
@@ -91,12 +107,12 @@ export async function POST(req: NextRequest) {
   // disposition time, not call-start time.  This blocks any agent from calling
   // the same number again for 8 hours after it has been dispositioned.
   if (lead_id) {
-    await db.from('leads').update({ last_called_at: new Date().toISOString() }).eq('id', lead_id)
+    await db.from('leads').update({ last_called_at: new Date().toISOString() }).eq('id', lead_id).eq('tenant_id', tenantId)
   } else if (lead_phone) {
     const d = (lead_phone || '').replace(/\D/g, '')
     if (d.length >= 7) {
       let updateQuery = db.from('leads').update({ last_called_at: new Date().toISOString() }).ilike('phone', `%${d}%`)
-      if (tenantId) updateQuery = updateQuery.eq('tenant_id', tenantId)
+      updateQuery = updateQuery.eq('tenant_id', tenantId)
       await updateQuery
     }
   }

@@ -1,21 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { getCaller } from '@/lib/caller'
 
-// This is the one place in the app that gets a real server-side authorization check rather
-// than trusting the client — creating a tenant + its first login is a much higher-stakes
-// action than viewing your own data, so it's worth the one exception.
-async function requirePlatformAdmin(db: ReturnType<typeof createServerClient>, agentId: string | null) {
-  if (!agentId) return false
-  const { data } = await db.from('agents').select('is_platform_admin').eq('id', agentId).single()
-  return !!data?.is_platform_admin
+// Decided by the signed-in caller (proxy also blocks non-super-admins from /api/platform).
+async function requirePlatformAdmin() {
+  return !!(await getCaller())?.isPlatformAdmin
 }
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const agentId = searchParams.get('agent_id')
-
+export async function GET() {
   const db = createServerClient()
-  if (!(await requirePlatformAdmin(db, agentId))) {
+  if (!(await requirePlatformAdmin())) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -40,10 +34,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { agent_id, name, admin_name, admin_email, admin_password } = body
+  const { name, admin_name, admin_email, admin_password } = body
 
   const db = createServerClient()
-  if (!(await requirePlatformAdmin(db, agent_id))) {
+  if (!(await requirePlatformAdmin())) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -99,10 +93,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { agent_id, tenant_id, hidden_features } = await req.json()
+  const { tenant_id, hidden_features } = await req.json()
 
   const db = createServerClient()
-  if (!(await requirePlatformAdmin(db, agent_id))) {
+  if (!(await requirePlatformAdmin())) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   if (!tenant_id || !Array.isArray(hidden_features)) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, getAgentTenantId } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
+import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
   if (!name?.trim()) return NextResponse.json({ error: 'name is required' }, { status: 400 })
 
   const db = createServerClient()
-  const tenantId = agent_id ? await getAgentTenantId(db, agent_id) : null
+  const tenantId = await getAgentTenantId(db, agent_id)
   if (!tenantId) return NextResponse.json({ error: 'Unknown agent' }, { status: 404 })
 
   const { data, error } = await db
@@ -56,7 +57,9 @@ export async function PATCH(req: NextRequest) {
   if (edges !== undefined) updates.edges = edges
 
   const db = createServerClient()
-  const { data, error } = await db.from('dialer_workflows').update(updates).eq('id', id).select().single()
+  const tenantId = await getAgentTenantId(db)
+  const { data, error } = await db.from('dialer_workflows').update(updates).eq('id', id).eq('tenant_id', tenantId ?? NO_TENANT).select().maybeSingle()
+  if (!error && !data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
@@ -67,7 +70,8 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
   const db = createServerClient()
-  const { error } = await db.from('dialer_workflows').delete().eq('id', id)
+  const tenantId = await getAgentTenantId(db)
+  const { error } = await db.from('dialer_workflows').delete().eq('id', id).eq('tenant_id', tenantId ?? NO_TENANT)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

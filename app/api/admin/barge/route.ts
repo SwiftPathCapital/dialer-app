@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { getCaller, unauthorized, forbidden } from '@/lib/caller'
 
 export async function POST(req: NextRequest) {
-  const { call_control_id, admin_sip_username } = await req.json()
+  const { call_control_id } = await req.json()
 
   if (!call_control_id) return NextResponse.json({ error: 'No call control ID — only inbound calls can be monitored.' }, { status: 400 })
 
@@ -18,6 +19,15 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
   const agentCallLegId = callRow?.agent_call_leg_id || null
   const callTenantId = callRow?.tenant_id || null
+
+  // Only listen in on your own tenant's calls, and only ring your own softphone.
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  if (!callRow) return NextResponse.json({ error: 'Call not found.' }, { status: 404 })
+  if (callTenantId !== caller.tenantId && !caller.isPlatformAdmin) return forbidden()
+  const { data: me } = await db.from('agents').select('sip_username').eq('id', caller.id).maybeSingle()
+  const admin_sip_username = me?.sip_username
+  if (!admin_sip_username) return NextResponse.json({ error: 'Your login has no softphone set up, so it can\'t listen in.' }, { status: 409 })
 
   let groupQuery = db.from('inbound_groups').select('phone_number').not('phone_number', 'is', null).limit(1)
   if (callTenantId) groupQuery = groupQuery.eq('tenant_id', callTenantId)
@@ -55,7 +65,6 @@ export async function POST(req: NextRequest) {
     webhook_url: `${appUrl}/api/webhooks/voice/barge-answer`,
     client_state: clientState,
   }
-  console.log('[barge] dialing admin:', JSON.stringify(dialPayload))
 
   const dialRes = await fetch('https://api.telnyx.com/v2/calls', {
     method: 'POST',
@@ -63,9 +72,9 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify(dialPayload),
   })
   const dialData = await dialRes.json()
-  console.log('[barge] telnyx response:', dialRes.status, JSON.stringify(dialData))
 
   if (!dialRes.ok) {
+    console.error('[barge] Telnyx dial failed:', dialRes.status, JSON.stringify(dialData))
     return NextResponse.json({ error: dialData.errors?.[0]?.detail || 'Could not call admin.' }, { status: 500 })
   }
 

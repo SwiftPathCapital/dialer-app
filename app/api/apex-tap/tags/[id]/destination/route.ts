@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createApexTapServerClient } from '@/lib/apexTapSupabase'
+import { createServerClient } from '@/lib/supabase'
+import { getCaller, canUseFeature, unauthorized, forbidden } from '@/lib/caller'
 
 // Mirrors apex-tap's set_tag_destination RPC (insert + flip is_active, never UPDATE in
 // place) but can't reuse that RPC directly — it's security invoker and checks
 // auth.uid() membership, which is null under the service role. This route is the
-// staff-side equivalent: authorization here is "you're a logged-in dialer agent",
-// enforced by the dialer's own auth, not apex-tap's org membership.
+// staff-side equivalent: authorization here is "a signed-in dialer user whose account has
+// Apex Tap turned on", enforced by the dialer's own auth, not apex-tap's org membership.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  if (!(await canUseFeature(createServerClient(), caller, '/apex-tap'))) return forbidden('Apex Tap isn\'t turned on for your account.')
   const { id } = await params
   const body = await req.json()
   const url = (body.url || '').trim()

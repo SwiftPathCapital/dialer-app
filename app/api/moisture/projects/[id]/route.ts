@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { getCaller, unauthorized } from '@/lib/caller'
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
   const db = createServerClient()
 
   const { data: project, error } = await db
     .from('moisture_projects')
     .select('id, lead_id, name, status, floor_plan_type, floor_plan_image_url, floor_plan_shapes, created_at, updated_at, lead:leads(id, name, first_name, last_name, company_name, phone)')
     .eq('id', id)
+    .eq('tenant_id', caller.tenantId)
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 404 })
@@ -44,6 +48,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const body = await req.json()
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
   const db = createServerClient()
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
@@ -57,9 +63,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .from('moisture_projects')
     .update(updates)
     .eq('id', id)
+    .eq('tenant_id', caller.tenantId)
     .select()
-    .single()
+    .maybeSingle()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(data)
 }

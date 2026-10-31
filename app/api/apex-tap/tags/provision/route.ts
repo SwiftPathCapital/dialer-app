@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createApexTapServerClient } from '@/lib/apexTapSupabase'
+import { createServerClient } from '@/lib/supabase'
+import { getCaller, canUseFeature, unauthorized, forbidden } from '@/lib/caller'
 
 const VALID_TIERS = ['apex_tag', 'card_pro', 'biz_kit']
 
 export async function POST(req: NextRequest) {
+  const caller = await getCaller()
+  if (!caller) return unauthorized()
+  if (!(await canUseFeature(createServerClient(), caller, '/apex-tap'))) return forbidden('Apex Tap isn\'t turned on for your account.')
   const body = await req.json()
   const count = Number(body.count)
   const tier = body.tier || 'apex_tag'

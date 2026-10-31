@@ -6,6 +6,7 @@ import { Phone } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import { Agent } from '@/lib/types'
+import { setSwitchedAccount } from '@/lib/actAs'
 
 export default function LoginPage() {
   const [email, setEmail]       = useState('')
@@ -43,6 +44,7 @@ export default function LoginPage() {
 
     const { tenants, ...rest } = agentRow
     const agent: Agent = { ...rest, tenant_hidden_features: tenants?.hidden_features ?? [] }
+    setSwitchedAccount(null) // every sign-in starts in the user's own account
     setAgent(agent)
     // Set HttpOnly session cookies so middleware can protect routes
     await fetch('/api/auth/session', {
