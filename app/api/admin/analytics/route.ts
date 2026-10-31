@@ -24,19 +24,40 @@ export async function GET(req: NextRequest) {
   const range = searchParams.get('range') || 'today'
   const detail = searchParams.get('detail') // 'all' | 'inbound' | 'outbound' | 'apps' | 'funded'
   const agentId = searchParams.get('agent_id')
+  // Distinct from agent_id (the requesting admin, used only to resolve tenant) — this
+  // narrows the whole report to one agent's calls when set.
+  const filterAgentId = searchParams.get('filter_agent_id')
   const db = createServerClient()
   const tenantId = await getAgentTenantId(db, agentId)
 
   // Exclude ghost rows created by old Dialpad double-POST bug (null telnyx_call_control_id)
   let baseQuery = db
     .from('dialer_calls')
-    .select('direction, disposition, status, from_number, to_number, started_at, duration_seconds, agents(id, name)')
+    .select('direction, disposition, status, from_number, to_number, started_at, duration_seconds, agent_id, agents(id, name)')
     .gte('started_at', rangeStart(range))
     .not('telnyx_call_control_id', 'is', null)
   baseQuery = baseQuery.eq('tenant_id', tenantId ?? NO_TENANT)
 
-  const { data: calls } = await baseQuery
-  if (!calls) return NextResponse.json({ error: 'Query failed' }, { status: 500 })
+  const { data: allCalls } = await baseQuery
+  if (!allCalls) return NextResponse.json({ error: 'Query failed' }, { status: 500 })
+
+  // byAgent always reflects the full team for this range, regardless of filter_agent_id —
+  // it's what lets an admin pick which agent to drill into.
+  const byAgentMap = new Map<string, { agent_id: string; agent_name: string; all: number; inbound: number; outbound: number; apps: number; funded: number }>()
+  for (const c of allCalls) {
+    if (!c.agent_id) continue
+    const name = (c.agents as unknown as { id: string; name: string } | null)?.name || 'Unknown'
+    const row = byAgentMap.get(c.agent_id) || { agent_id: c.agent_id, agent_name: name, all: 0, inbound: 0, outbound: 0, apps: 0, funded: 0 }
+    row.all++
+    if (c.direction === 'inbound') row.inbound++
+    if (c.direction === 'outbound') row.outbound++
+    if (c.disposition && APP_DISPOS.includes(c.disposition)) row.apps++
+    if (c.disposition && FUNDED_DISPOS.includes(c.disposition)) row.funded++
+    byAgentMap.set(c.agent_id, row)
+  }
+  const byAgent = Array.from(byAgentMap.values()).sort((a, b) => b.all - a.all)
+
+  const calls = filterAgentId ? allCalls.filter(c => c.agent_id === filterAgentId) : allCalls
 
   // If detail requested, return filtered call list instead of aggregate
   if (detail) {
@@ -66,6 +87,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     range,
+    byAgent,
     totals: {
       all: calls.length,
       inbound: inbound.length,

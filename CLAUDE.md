@@ -1,122 +1,121 @@
-# SwiftPath Dialer — Claude Code Context
-
----
-
-## ⛔ RULES — Read before doing anything
-
-These rules exist because a previous Claude session broke the live CRM by making database changes without understanding the shared schema. Follow them exactly.
-
-### Database rules
-1. **Never DROP, CREATE, or TRUNCATE any table** without explicit user confirmation. Even `CREATE TABLE IF NOT EXISTS` on an existing table can reset RLS policies and wipe foreign key relationships.
-2. **Never run `schema.sql` again** as a whole file — it is a one-time setup document. Running it again will attempt to recreate tables and realtime subscriptions that already exist, causing errors and potentially data loss.
-3. **Never touch the `agents` table structure** — no DROP, no TRUNCATE, no removing columns. See the detailed rules below.
-4. **Never alter RLS policies on shared tables** (`agents`, `leads`, `calls`, `sms_conversations`, `sms_messages`) without checking with the user first. The CRM depends on these policies for access control.
-5. **Before any schema change** (new table, new column, new index, new policy): check what already exists using the Supabase MCP. Do not assume the database matches `schema.sql` — the live database has been modified since that file was written.
-6. **Never insert or delete rows in `agents` directly.** Agent creation and deletion must go through the CRM (see below).
-
-### Code rules
-7. **Never change environment variable names** in `.env.local` or `next.config.ts`. The app is deployed on Railway — renaming a var breaks production silently.
-8. **Never modify the Telnyx webhook routes** (`app/api/webhooks/`) without understanding the full TeXML call flow documented below. These handle live calls; a bug here drops active calls for all agents.
-9. **Do not install new packages without confirming with the user.** The dialer shares a Railway deployment budget — unnecessary deps increase build time and memory.
-10. **Do not push to git or deploy** unless the user explicitly asks. Propose the change, wait for approval.
-
----
+# Apex Dialer — Claude Code Context
 
 ## What this project is
-A standalone browser-based dialer app for SwiftPath Capital agents. Separate from the Electron CRM (crm-skeleton / Apex CRM) but shares the same Supabase project. Deployed on Railway.
+A multi-tenant, browser-based dialer and contact-center app run by **Apex Development & Marketing** as an agency. Each client business is a **tenant** (e.g. SwiftPath Capital, Sunlight Contractors) with its own agents, leads, calls, numbers and settings. Next.js app deployed on Railway, backed by one Supabase project, telephony on Telnyx.
+
+There is **no other app sharing this Supabase project** today. (Older notes described a shared "Apex CRM / crm-skeleton" Electron app and a CRM-owned `calls` table — both are gone. The current Apex CRM is a separate system.)
+
+---
+
+## ⛔ Rules
+
+### Database
+1. **Check before changing schema.** Use the Supabase MCP (`list_tables`, or query `information_schema`) before any new table/column/index/policy. The live DB has drifted from `supabase/schema.sql`.
+2. **Never run `supabase/schema.sql`** as a whole file — it's a historical setup doc and would try to recreate existing tables.
+3. **No DROP / TRUNCATE / recreate of existing tables, and no RLS policy changes** without explicit user confirmation.
+4. **New dialer tables use the `dialer_` prefix**, carry `tenant_id uuid not null references tenants(id)`, enable RLS, and get the standard read-only policy (see "Multi-tenancy" below). Writes go through server routes with the service role.
+5. **`agents.id` must equal an `auth.users.id`.** Create logins through the app's **Clients page** (`POST /api/platform/tenants`, uses the Supabase Admin API) — never by inserting a bare `agents` row with a generated UUID.
+
+### Code
+6. **Never rename environment variables** (Railway breaks silently). Current names are listed below.
+7. **Live-call webhooks (`app/api/webhooks/voice/*`, `app/api/webhooks/sms`) need extra care** — a bug drops calls for every tenant. Read the TeXML notes below first, and when refactoring, diff old vs. new behavior.
+8. **Don't add npm packages without asking.**
+9. **Don't push or deploy unless the user asks.** Commit locally; propose.
+
+---
 
 ## Stack
-- **Framework:** Next.js 14 App Router (TypeScript)
-- **Styling:** Tailwind CSS
-- **Database:** Supabase (shared with the CRM)
-- **Telephony:** Telnyx — voice via WebRTC (`@telnyx/webrtc`), SMS via Telnyx Node SDK
-- **Icons:** lucide-react
+- **Next.js 16** App Router, **React 19**, TypeScript, **Tailwind 4**
+- **Supabase** (`@supabase/supabase-js`) — Postgres, Auth, Realtime; `pg_cron` + `pg_net` enabled
+- **Telnyx** — browser softphone via `@telnyx/webrtc`; voice routing via TeXML webhooks; SMS + REST via `telnyx` SDK / v2 API
+- `@xyflow/react` (workflow canvas), `lucide-react` (icons)
 
-## Key features
-- Per-agent softphone (each agent has their own Telnyx SIP credential)
-- Click-to-call outbound dialing
-- Inbound groups with parallel ring + voicemail fallback
-- Two-way SMS inbox with Supabase Realtime
-- Voicemail inbox with audio playback
-- Admin panel: manage groups, agents, and app config (Telnyx keys stored in DB)
+## Accounts & roles
+- **Super admin (platform admin):** `agents.is_platform_admin = true`. Currently only the Apex account (`jordan@apexdevelopmentandmarketing.com`, tenant "Apex Development & Marketing"). Sees **Admin → Clients** (`/admin/tenants`): create clients, toggle each client's visible pages (`tenants.hidden_features`).
+- **Client admin:** `role = 'admin'` within a tenant — sees that tenant's admin pages only.
+- **Agent:** `role = 'agent'`.
+- **Account switcher (platform admin only):** the arrow next to the sidebar logo lists every account; picking one works inside it from the admin's own login, with an amber banner and *Back to my account*. See the auth section for how it's enforced.
 
-## Project structure
-- `app/` — Next.js App Router pages and API routes
-- `app/api/webhooks/voice/` — Telnyx TeXML webhook handlers for call routing
-- `app/api/webhooks/sms/` — Telnyx inbound SMS webhook
-- `components/` — React UI components
-- `lib/SoftphoneContext.tsx` — global React context for the TelnyxRTC client and call state
-- `lib/supabase.ts` — Supabase client (browser + server variants)
-- `lib/telnyx.ts` — async factory for Telnyx Node SDK (reads API key from `app_config` table)
-- `supabase/schema.sql` — full DB schema to run in Supabase SQL editor
+## Auth — how API requests are verified
+- Login (`app/login`) uses `supabase.auth.signInWithPassword`, then loads the `agents` row into React context + `localStorage` (8-hour expiry) and sets HttpOnly cookies via `/api/auth/session`.
+- `lib/authFetch.ts` patches `window.fetch` (installed at module load in `SoftphoneContext`) to add `Authorization: Bearer <supabase access token>` to every same-origin `/api/*` call. A 401 with `code: 'session_required'` clears the saved agent and sends the user to `/login`.
+- `proxy.ts` (Next 16's middleware) runs on every `/api/*` request: it strips any incoming `x-caller-*` headers, verifies the token with `supabase.auth.getUser`, loads the `agents` row (30 s cache), and passes `x-caller-id / -tenant / -role / -platform-admin` to the route. It also enforces `/api/admin/*` = admin (except `GET /api/admin/tags`) and `/api/platform/*` = platform admin.
+- Public (no token): `/api/webhooks/*`, `/api/book/*`, `/api/reminders/dispatch`, `/api/reports/dispatch`, `/api/auth/session` — listed in `lib/callerHeaders.ts`.
+- **In routes, identity and tenant come only from `getCaller()` (`lib/caller.ts`)** — never from an `agent_id`/`tenant_id` in the body or query. Every update/delete by id must also filter `.eq('tenant_id', caller.tenantId)`. `getAgentTenantId()` returns the caller's tenant when there is one and only looks up the given agent for webhooks/jobs.
+- **Switched account:** while the platform admin has switched into a client (`lib/actAs.ts`, localStorage `dialer_act_as`), the browser sends `x-act-as-tenant`. `proxy.ts` honors it only for platform admins and only for an existing tenant (anyone else gets 403 `act_as_invalid`). Routes then see `caller.tenantId` = the client and `caller.homeTenantId` = the admin's own, with `caller.actingAs = true`. Personal actions refuse with `switchedAccount()` while switched (placing calls, preflight, predictive Start, scheduling an event for yourself); handling the admin's *own* calls (answer/end/disposition) uses `homeTenantId`. Switches are logged by `POST /api/platform/act-as`.
 
-## Supabase tables
-`agents`, `inbound_groups`, `inbound_group_members`, `dialer_calls`, `voicemails`, `sms_conversations`, `sms_messages`, `app_config`
+## Multi-tenancy
+- `tenants` table; almost every table has `tenant_id` (default = SwiftPath's id for legacy rows).
+- Server routes scope queries to `getCaller().tenantId` (`lib/caller.ts`). The `tenant_id` column default means an insert that forgets `tenant_id` silently lands in SwiftPath — always set it.
+- Standard RLS select policy for tenant tables:
+  ```sql
+  using ((select auth.role()) = 'authenticated'
+     and tenant_id = (select a.tenant_id from agents a where a.id = (select auth.uid())))
+  ```
+- Webhooks resolve the tenant from the **dialed number** (group number → agent DID), then stamp that tenant on every row they write.
+- `app_config` is keyed `(tenant_id, key)`. **Gotcha:** `getConfigValue()` in `lib/telnyx.ts` reads by key only with `.single()`. The Telnyx keys currently live under the SwiftPath tenant and serve every tenant; if a second tenant saves a `telnyx_api_key`, that lookup errors app-wide. Fix before per-tenant Telnyx config.
 
-### Shared Supabase — table collision warning
-This Supabase project is shared with the Apex CRM. Several table names overlap. **Do not use generic names** — always use the `dialer_` prefix for new dialer tables. Known collisions:
-- `calls` — belongs to the CRM (columns: `call_session_id`, `agent_id` as text, `lead_phone`, etc.). The dialer uses `dialer_calls` instead.
-- `sms_conversations`, `sms_messages` — created by the dialer schema; CRM does not use these.
+## Main features
+- **Softphone / dialer queue** (`/dashboard`): per-agent Telnyx WebRTC softphone; queue = never-called first, then longest-since-called; 8-hour cooldown after a call/disposition; dead statuses excluded; wrap-up (notes → disposition), callbacks, tags, new-lead capture for unknown numbers.
+- **Inbound groups** — parallel ring to non-offline members, voicemail fallback; direct agent DID lines.
+- **Contact Center** (`/contact-center`) — unified SMS/call threads; **Voicemail**, **Call Log**, **Callbacks**, **Calendar** (team calendars, per-calendar SMS reminders).
+- **Admin:** Monitor/barge, Analytics (per-agent stats + report builder with CSV export and scheduled email), Call Center recordings, Calendars, **Workflows** (disposition-triggered automations, `@xyflow/react` canvas), Groups, Tags, Config (Telnyx keys in `app_config`).
+- **Moisture Mapping** (`/moisture-mapping`) — floor-plan moisture tracking per contact (tenant feature).
+- **Apex Tap** (`/apex-tap`) — NFC tag ops panel backed by a **separate** Supabase project (`APEXTAP_*` env vars, `lib/apexTapSupabase.ts`).
+- Placeholder pages (`ComingSoon`): ads-manager, deals, reporting, reputation, social, tasks, web-admin.
 
-Before adding any new table, run `list_tables` via the Supabase MCP to check for conflicts.
+## Scheduled jobs (Supabase `pg_cron` → `pg_net` → app)
+| Job | Schedule | Route | Header / secret |
+|---|---|---|---|
+| `dialer-reminder-dispatch` | every 5 min | `POST /api/reminders/dispatch` | `x-reminder-secret` = `REMINDER_DISPATCH_SECRET` |
+| `dialer-report-dispatch` | hourly | `POST /api/reports/dispatch` | `x-report-secret` = `REPORT_DISPATCH_SECRET` |
 
-### ⚠️ CRITICAL — agents table is shared with the CRM. Read before touching it.
-The `agents` table is **owned by the CRM** and must never be dropped, truncated, or recreated. Doing so will break the live CRM for all users (this already happened once and took hours to fix).
+Email sending (`lib/email.ts`) is a **stub that throws** until a provider is connected; callers catch and log.
 
-**Rules:**
-- **NEVER** run `DROP TABLE agents`, `CREATE TABLE agents`, or `TRUNCATE agents`
-- **NEVER** remove columns from `agents`
-- To add dialer-specific columns: `ALTER TABLE agents ADD COLUMN IF NOT EXISTS ...` only
-- `schema.sql` already follows this pattern — keep it that way
+## Supabase tables (public)
+`activities, agents, app_config, calendar_groups, calendar_members, calendar_visibility, calendars, dialer_callbacks, dialer_calls, dialer_reminder_log, dialer_report_schedules, dialer_workflows, inbound_group_members, inbound_groups, lead_comments, lead_sources, lead_tags, leads, moisture_projects, moisture_reading_points, moisture_readings, sms_conversations, sms_messages, tags, tenants, voicemails`
 
-**Column ownership:**
+Also live, used by the local presence / predictive dialer work (PR #3): `dialer_tenant_settings, dialer_caller_ids, dialer_agent_sessions, dialer_dial_attempts`.
 
-| Column | Owner |
-|---|---|
-| `id` | CRM — must equal the Supabase `auth.users.id` for each agent |
-| `role` | CRM — `'admin'` or `'agent'`, drives sidebar and RLS policies |
-| `did` | CRM — agent's outbound phone number |
-| `sip_username`, `sip_password` | Shared — both apps use these for Telnyx |
-| `name`, `email` | Shared |
-| `status`, `extension`, `sip_connection_id`, `voicemail_greeting_url`, `updated_at` | Dialer |
+Notes: `dialer_calls` rows with null `telnyx_call_control_id` are ghost rows from an old double-POST bug — exclude them from stats. PostgREST returns at most 1,000 rows per request; page with `.range()` for anything that can exceed that.
 
-**Current agents (do not delete these rows):**
+## Environment variables (Railway service `dialer-app`, project `fearless-passion`)
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `APEXTAP_SUPABASE_URL`, `APEXTAP_SUPABASE_SERVICE_ROLE_KEY`, `REMINDER_DISPATCH_SECRET`, `REPORT_DISPATCH_SECRET`, optional `NEXT_PUBLIC_APP_URL` / `TELNYX_API_KEY` fallbacks. Telnyx keys and the app URL normally come from `app_config` (Admin → Config).
 
-| Name | Email | Role |
-|---|---|---|
-| Jordan Bosh | submissions@swiftpathtocapital.com | admin |
-| Keith Williams | keith.williams@swiftpathtocapital.com | agent |
-| Brent | william.primus@swiftpathtocapital.com | agent |
+Use dot notation for `NEXT_PUBLIC_*` (`process.env.NEXT_PUBLIC_X`) — bracket access isn't inlined into the client bundle.
 
-The CRM's RLS policies use `auth.uid() = agents.id` — so every agent row's `id` must match a real Supabase auth user.
+---
 
-**Agent creation must go through the CRM** (`POST /api/agents/create` on the CRM's Express server). That endpoint creates the Supabase auth user and the agents row atomically using the service role key. Do not add agents by inserting directly into the `agents` table or via the dialer's own admin UI — doing so produces a row with a generated UUID that won't match any auth user, breaking CRM login for that agent.
+## Telephony gotchas
 
-## Environment variables
-Supabase credentials go in `.env.local`. Telnyx keys are stored in the `app_config` Supabase table and managed via the `/admin/config` page — no redeploy needed to update them.
+### SIP URI for WebRTC agents
+Always `sip:username@sip.telnyx.com`. The connection-specific domain (`username@<connection_id>.sip.telnyx.com`) routes through Telnyx's URL-calling webhook instead of the WebRTC client and returns `busy`. `agentSipUri()` in `lib/telnyx.ts` falls back to `sip.telnyx.com` when `sip_connection_id` is null — keep that column NULL.
 
-## Auth
-No real auth yet (matches CRM Phase 1). Agents log in by email lookup against the `agents` table. Role-based access planned for a future phase.
-
-## SIP URI for WebRTC agents
-Always use `sip:username@sip.telnyx.com` for all agents. The connection-specific domain (`username@<connection_id>.sip.telnyx.com`) routes through Telnyx's URL calling webhook instead of delivering the INVITE directly to the WebRTC client — this causes `busy` and the call never reaches the browser. The `sip_connection_id` column exists on the `agents` table but all values are NULL; `agentSipUri()` in `lib/telnyx.ts` falls back to `sip.telnyx.com` when null. Do not populate `sip_connection_id` unless Telnyx changes this behavior.
-
-## Remote audio — must be handled manually
-The Telnyx WebRTC SDK does NOT create an `<audio>` element automatically. When `call.state === 'active'`, `call.remoteStream` is a live MediaStream that must be manually attached to an audio element or the caller will be completely inaudible. The pattern in `lib/SoftphoneContext.tsx`:
+### Remote audio must be attached manually
+The WebRTC SDK doesn't create an `<audio>` element. On `call.state === 'active'`, attach `call.remoteStream`:
 ```typescript
 const audio = document.getElementById('telnyx-remote-audio') as HTMLAudioElement
   ?? Object.assign(document.createElement('audio'), { id: 'telnyx-remote-audio', autoplay: true })
-document.body.appendChild(audio)  // no-op if already attached
+document.body.appendChild(audio)
 audio.srcObject = call.remoteStream
 audio.play().catch(console.error)
 ```
-Clean up on `hangup`/`destroy` by setting `srcObject = null` and removing the element.
+Clean up on `hangup`/`destroy` (`srcObject = null`, remove the element).
 
-## Mic device on Windows
-Chrome on Windows may default to "Stereo Mix (Realtek)" — a loopback device — instead of the real microphone. This makes outgoing audio silent and triggers WebRTC echo cancellation to kill incoming audio too. If an agent reports two-way silence, have them check Windows Sound → Recording and set their actual microphone as default, then disable Stereo Mix.
+### Mic device on Windows
+Chrome may default to "Stereo Mix (Realtek)" (loopback) → silent outbound audio and echo cancellation kills inbound too. Fix: Windows Sound → Recording → set the real mic as default, disable Stereo Mix.
 
-## agentLoading — required before redirecting
-`SoftphoneContext` restores the agent from localStorage asynchronously. Pages that call `router.push('/login')` when `!agent` must wait for `agentLoading === false` first, otherwise the redirect fires before the restore completes and causes "Router action dispatched before initialization". Pattern:
+### Webhook method
+TeXML webhooks can arrive as GET (query string) or POST (form-encoded). Voice routes handle both via `getParams()`. Never write a voice route that handles only one.
+
+### TeXML `<Dial action=...>`
+With an `action` attribute, Telnyx jumps to that URL when the dial ends; verbs after `</Dial>` never run. So voicemail fallback lives in `app/api/webhooks/voice/status/route.ts` (checks `DialCallStatus`), not in the main route.
+
+### Outbound calls
+Placed in the browser (`makeCall` in `lib/SoftphoneContext.tsx`); the app writes the `dialer_calls` row and duration itself because no TeXML status webhook fires for them.
+
+## React pattern: wait for `agentLoading`
+`SoftphoneContext` restores the agent from localStorage asynchronously. Redirect only after it finishes:
 ```typescript
 const { agent, agentLoading } = useSoftphone()
 useEffect(() => {
@@ -124,17 +123,15 @@ useEffect(() => {
   if (!agent) { router.push('/login'); return }
   // ... load page data
 }, [agent, agentLoading, router])
+```
 
-## Telnyx webhook method
-Telnyx TeXML webhooks can arrive as either GET (params in query string) or POST (params as `application/x-www-form-urlencoded` body) depending on how the TeXML application is configured. All voice webhook routes handle **both** via a shared `getParams()` helper that reads from `req.nextUrl.searchParams` (GET) or `req.text()` (POST). Never write a route that only handles one method.
-
-## TeXML call flow — important gotcha
-When `<Dial>` has an `action` attribute, Telnyx redirects control to that URL after the dial completes. Any verbs placed **after** `</Dial>` in the same response are never executed — they're dead code.
-
-Voicemail fallback therefore lives in `app/api/webhooks/voice/status/route.ts`, not in the main route. The status handler checks `DialCallStatus`: if it's anything other than `completed` (e.g. `no-answer`, `busy`, `failed`), it looks up the group's `voicemail_enabled` flag and returns the `<Say>/<Record>` TeXML. The main route's `<Dial>` block contains only the `<Sip>` targets.
+## Supabase query gotcha
+Query builders are thenables. If a helper is `async` and takes a builder (e.g. `applyLeadFilters`), add `.order()` / `.limit()` **before** awaiting it — awaiting runs the query.
 
 ## Dev
-```powershell
-cd "$env:USERPROFILE\OneDrive\Desktop\dialer-app"; npm run dev
+```bash
+npm run dev            # http://localhost:3000
+npx tsc --noEmit       # typecheck
+npm run build
 ```
-App runs at http://localhost:3000
+Needs `.env.local` with the Supabase variables above.
