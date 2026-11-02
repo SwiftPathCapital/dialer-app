@@ -1,13 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
+import { callerTenantId } from '@/lib/caller'
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const agentId = searchParams.get('agent_id')
-
+export async function GET() {
   const db = createServerClient()
-  const tenantId = await getAgentTenantId(db, agentId)
+  const tenantId = await callerTenantId()
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -22,9 +19,9 @@ export async function GET(req: NextRequest) {
     .select('agent_id, direction, duration_seconds')
     .gte('started_at', today.toISOString())
 
-  agentsQuery = agentsQuery.eq('tenant_id', tenantId ?? NO_TENANT)
-  activeCallsQuery = activeCallsQuery.eq('tenant_id', tenantId ?? NO_TENANT)
-  todayCallsQuery = todayCallsQuery.eq('tenant_id', tenantId ?? NO_TENANT)
+  agentsQuery = agentsQuery.eq('tenant_id', tenantId)
+  activeCallsQuery = activeCallsQuery.eq('tenant_id', tenantId)
+  todayCallsQuery = todayCallsQuery.eq('tenant_id', tenantId)
 
   const [agentsRes, activeCallsRes, todayCallsRes, membershipsRes] = await Promise.all([
     agentsQuery,

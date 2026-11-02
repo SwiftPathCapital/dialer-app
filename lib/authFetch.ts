@@ -9,12 +9,17 @@ import { getSwitchedAccount, setSwitchedAccount } from './actAs'
 
 let installed = false
 
+export const SIGNED_OUT_EVENT = 'dialer:signed-out'
+
 function signOutLocally() {
   try {
     localStorage.removeItem('dialer_agent')
     localStorage.removeItem('dialer_agent_expires')
   } catch { /* storage unavailable */ }
   setSwitchedAccount(null)
+  // Tell the app the session is gone so pages and widgets stop polling with a dead token
+  // (SoftphoneContext clears the agent), then leave the page if it needs a login.
+  window.dispatchEvent(new Event(SIGNED_OUT_EVENT))
   const path = window.location.pathname
   if (path !== '/' && path !== '/login' && !path.startsWith('/book/')) window.location.href = '/login'
 }

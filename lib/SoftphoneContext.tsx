@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { Agent, AgentStatus } from './types'
 import { supabase } from './supabase'
-import { installAuthFetch } from './authFetch'
+import { installAuthFetch, SIGNED_OUT_EVENT } from './authFetch'
 import { getSwitchedAccount, setSwitchedAccount } from './actAs'
 
 // Must run before any page's first /api request (child effects run before this provider's).
@@ -183,6 +183,13 @@ export function SoftphoneProvider({ children }: { children: React.ReactNode }) {
       }
     }
   }, [activeCall])
+
+  // ── Server said the session is gone (401 session_required) ────────────────
+  useEffect(() => {
+    const onSignedOut = () => setAgent(null)
+    window.addEventListener(SIGNED_OUT_EVENT, onSignedOut)
+    return () => window.removeEventListener(SIGNED_OUT_EVENT, onSignedOut)
+  }, [])
 
   // ── Restore localStorage agent on mount ───────────────────────────────────
   useEffect(() => {

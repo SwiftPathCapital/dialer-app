@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
+import { callerTenantId } from '@/lib/caller'
 
 // Statuses that permanently remove a lead from the dialing queue
 const DEAD = new Set(['DNC', 'Not Interested', 'Wrong Number'])
@@ -16,15 +16,12 @@ export interface LeadSourceRow {
   by_status: Record<string, number>
 }
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const agentId = searchParams.get('agent_id')
-
+export async function GET() {
   const db = createServerClient()
-  const tenantId = await getAgentTenantId(db, agentId)
+  const tenantId = await callerTenantId()
 
   let query = db.from('leads').select('lead_type, lead_type_label, status')
-  query = query.eq('tenant_id', tenantId ?? NO_TENANT)
+  query = query.eq('tenant_id', tenantId)
 
   const { data, error } = await query
 

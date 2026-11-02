@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
+import { callerTenantId } from '@/lib/caller'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const minDuration = parseInt(searchParams.get('min_duration') || '0')
   const maxDuration = searchParams.get('max_duration') ? parseInt(searchParams.get('max_duration')!) : null
-  const agentId = searchParams.get('agent_id')
 
   const db = createServerClient()
-  const tenantId = await getAgentTenantId(db, agentId)
+  const tenantId = await callerTenantId()
 
   let query = db
     .from('dialer_calls')
@@ -18,7 +17,7 @@ export async function GET(req: NextRequest) {
     .order('started_at', { ascending: false })
     .limit(500)
 
-  query = query.eq('tenant_id', tenantId ?? NO_TENANT)
+  query = query.eq('tenant_id', tenantId)
   if (minDuration > 0) query = query.gte('duration_seconds', minDuration)
   if (maxDuration !== null) query = query.lte('duration_seconds', maxDuration)
 

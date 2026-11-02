@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
+import { callerTenantId } from '@/lib/caller'
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const agentId = searchParams.get('agent_id')
-
+export async function GET() {
   const db = createServerClient()
-  const tenantId = await getAgentTenantId(db, agentId)
+  const tenantId = await callerTenantId()
 
-  let query = db.from('tags').select('id, name, color').order('name')
-  query = query.eq('tenant_id', tenantId ?? NO_TENANT)
+  const query = db.from('tags').select('id, name, color').order('name').eq('tenant_id', tenantId)
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -18,11 +14,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { name, color, agent_id } = await req.json()
+  const { name, color } = await req.json()
   if (!name?.trim()) return NextResponse.json({ error: 'name is required' }, { status: 400 })
 
   const db = createServerClient()
-  const tenantId = await getAgentTenantId(db, agent_id)
+  const tenantId = await callerTenantId()
 
   const { data, error } = await db
     .from('tags')
@@ -40,8 +36,8 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
   const db = createServerClient()
-  const tenantId = await getAgentTenantId(db)
-  const { error } = await db.from('tags').delete().eq('id', id).eq('tenant_id', tenantId ?? NO_TENANT)
+  const tenantId = await callerTenantId()
+  const { error } = await db.from('tags').delete().eq('id', id).eq('tenant_id', tenantId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
