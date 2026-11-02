@@ -53,13 +53,17 @@ There is **no other app sharing this Supabase project** today. (Older notes desc
      and tenant_id = (select a.tenant_id from agents a where a.id = (select auth.uid())))
   ```
 - Webhooks resolve the tenant from the **dialed number** (group number → agent DID), then stamp that tenant on every row they write.
-- `app_config` is keyed `(tenant_id, key)`. **Gotcha:** `getConfigValue()` in `lib/telnyx.ts` reads by key only with `.single()`. The Telnyx keys currently live under the SwiftPath tenant and serve every tenant; if a second tenant saves a `telnyx_api_key`, that lookup errors app-wide. Fix before per-tenant Telnyx config.
+- `app_config` is keyed `(tenant_id, key)`. **Gotcha:** `getConfigValue()` in `lib/telnyx.ts` reads by key only with `.single()`. The Telnyx keys and `app_url` are **platform-wide** (they live under the SwiftPath tenant and serve every tenant); `POST /api/config` lets only the platform admin change them and updates the existing row in place, so a second row can't appear. Mailbox (`spacemail_*`) keys are per tenant. Per-tenant Telnyx accounts would need `getConfigValue` reworked first.
 
 ## Main features
 - **Softphone / dialer queue** (`/dashboard`): per-agent Telnyx WebRTC softphone; queue = never-called first, then longest-since-called; 8-hour cooldown after a call/disposition; dead statuses excluded; wrap-up (notes → disposition), callbacks, tags, new-lead capture for unknown numbers.
 - **Inbound groups** — parallel ring to non-offline members, voicemail fallback; direct agent DID lines.
 - **Contact Center** (`/contact-center`) — unified SMS/call threads; **Voicemail**, **Call Log**, **Callbacks**, **Calendar** (team calendars, per-calendar SMS reminders).
-- **Admin:** Monitor/barge, Analytics (per-agent stats + report builder with CSV export and scheduled email), Call Center recordings, Calendars, **Workflows** (disposition-triggered automations, `@xyflow/react` canvas), Groups, Tags, Config (Telnyx keys in `app_config`).
+- **Admin:** Monitor/barge, Analytics (per-agent stats + report builder with CSV export and scheduled email), Call Center recordings, Calendars, **Workflows** (disposition-triggered automations, `@xyflow/react` canvas — the builder saves actions as nodes of type `action` with the kind in `data.kind`; `lib/workflows.ts` runs only actions wired directly to the trigger), Groups, Tags, Config (Telnyx keys in `app_config`).
+- **Calling hours (always on):** `lib/callingHours.ts` — no dial to a known lead outside 8 AM–9 PM in the lead's time zone (8 PM FL/OK/MD). Every browser dial goes through `GET /api/calls/preflight` first (cooldown + calling hours + caller ID); it **fails closed** — if preflight can't answer, the call isn't placed. The queue filter (`lib/leadQueue.ts`) applies the same rules.
+- **Dialer add-ons (per tenant, off by default, `dialer_tenant_settings`):** local presence (`lib/localPresence.ts`: area code → state → agent DID; callbacks to local numbers routed in the voice webhook), texting from local numbers, power dialer (browser auto-dial after wrap-up), predictive dialer (`lib/predictive/*`, `/api/dialer/session`, signed Call Control webhook `/api/webhooks/dialer`; abandon rate capped at the tenant target ≤3%; needs `telnyx_call_control_connection_id` in Admin → Config). Platform admin toggles them on the Clients page and assigns or **buys** numbers there (`/api/platform/caller-ids`, `/api/platform/numbers`, `lib/telnyxNumbers.ts`).
+- **Booking pages** (`/book/[tenant]/[slug]`, public): per-calendar slots from `lib/booking.ts`; every booking creates or updates a lead and adds a note + activity.
+- **Call recording:** inbound, outbound and predictive calls are recorded (`record_start`) with **no disclosure played** — a compliance decision is pending with the owner.
 - **Moisture Mapping** (`/moisture-mapping`) — floor-plan moisture tracking per contact (tenant feature).
 - **Apex Tap** (`/apex-tap`) — NFC tag ops panel backed by a **separate** Supabase project (`APEXTAP_*` env vars, `lib/apexTapSupabase.ts`).
 - Placeholder pages (`ComingSoon`): ads-manager, deals, reporting, reputation, social, tasks, web-admin.
@@ -75,7 +79,7 @@ Email sending (`lib/email.ts`) is a **stub that throws** until a provider is con
 ## Supabase tables (public)
 `activities, agents, app_config, calendar_groups, calendar_members, calendar_visibility, calendars, dialer_callbacks, dialer_calls, dialer_reminder_log, dialer_report_schedules, dialer_workflows, inbound_group_members, inbound_groups, lead_comments, lead_sources, lead_tags, leads, moisture_projects, moisture_reading_points, moisture_readings, sms_conversations, sms_messages, tags, tenants, voicemails`
 
-Also live, used by the local presence / predictive dialer work (PR #3): `dialer_tenant_settings, dialer_caller_ids, dialer_agent_sessions, dialer_dial_attempts`.
+Dialer add-ons (local presence, power/predictive): `dialer_tenant_settings, dialer_caller_ids, dialer_agent_sessions, dialer_dial_attempts`. `dialer_booking_pages` backs the public booking pages.
 
 Notes: `dialer_calls` rows with null `telnyx_call_control_id` are ghost rows from an old double-POST bug — exclude them from stats. PostgREST returns at most 1,000 rows per request; page with `.range()` for anything that can exceed that.
 
