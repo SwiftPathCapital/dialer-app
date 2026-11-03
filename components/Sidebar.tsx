@@ -3,12 +3,13 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock, CalendarDays, List, Tag, Orbit, Building2, Droplets, Contact, QrCode, Workflow, ChevronLeft, ChevronRight, Radar, Link2, KeyRound } from 'lucide-react'
+import { Phone, MessageSquare, Voicemail, Users, SlidersHorizontal, LogOut, Wifi, WifiOff, PhoneCall, Activity, BarChart2, CalendarClock, CalendarDays, List, Tag, Orbit, Building2, Droplets, Contact, QrCode, Workflow, ChevronLeft, ChevronRight, Radar, Link2, KeyRound, FileSignature } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import { supabase } from '@/lib/supabase'
 import Tour from '@/components/Tour'
 import ChangePasswordModal from '@/components/ChangePasswordModal'
 import AccountSwitcher from '@/components/AccountSwitcher'
+import { isPublicPage } from '@/lib/publicPages'
 import { getSwitchedAccount } from '@/lib/actAs'
 
 // Emoji picks lean into the app's own visual language — orbit/satellite, signal,
@@ -22,6 +23,7 @@ const NAV = [
   { href: '/contact-center', icon: MessageSquare, label: 'Conversations', dataTour: 'nav-sms', emoji: '💠' },
   { href: '/voicemail',  icon: Voicemail,     label: 'Voicemail',  dataTour: 'nav-voicemail', emoji: '🎙️' },
   { href: '/calendar',   icon: CalendarDays,  label: 'Calendar',   dataTour: '', emoji: '🗓️' },
+  { href: '/contracts',  icon: FileSignature, label: 'Contracts',  dataTour: '', emoji: '✍️' },
   { href: '/callbacks',  icon: CalendarClock, label: 'Callbacks',  dataTour: '', emoji: '⏱️' },
   { href: '/calls',      icon: List,          label: 'Call Log',   dataTour: '', emoji: '📶' },
   { href: '/moisture-mapping', icon: Droplets, label: 'Moisture Mapping', dataTour: '', emoji: '💧' },
@@ -35,6 +37,7 @@ const ADMIN_NAV = [
   { href: '/admin/callbacks',  icon: CalendarClock,      label: 'Callbacks',  dataTour: '', emoji: '🔔' },
   { href: '/admin/calendars',  icon: CalendarDays,       label: 'Calendars',  dataTour: '', emoji: '🗓️' },
   { href: '/admin/booking',    icon: Link2,              label: 'Booking Pages', dataTour: '', emoji: '🔗' },
+  { href: '/admin/contracts',  icon: FileSignature,      label: 'Contracts',  dataTour: '', emoji: '📝' },
   { href: '/admin/workflows',  icon: Workflow,           label: 'Workflows',  dataTour: '', emoji: '🔀' },
   { href: '/admin/groups',     icon: Users,              label: 'Groups',     dataTour: 'nav-groups', emoji: '🌐' },
   { href: '/admin/tags',       icon: Tag,                label: 'Tags',       dataTour: '', emoji: '🏷️' },
@@ -151,8 +154,8 @@ export default function Sidebar() {
     setAgent(null)
   }
 
-  // Public booking pages are for the dialer's customers, not agents.
-  if (pathname.startsWith('/book/')) return null
+  // Booking and signing pages are for the dialer's customers, not agents.
+  if (isPublicPage(pathname)) return null
 
   // Tenant-level hides are a baseline every agent in that tenant inherits, on top of
   // whatever an admin has hidden for that specific agent.

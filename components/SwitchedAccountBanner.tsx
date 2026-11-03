@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { Eye, Loader2 } from 'lucide-react'
 import { getSwitchedAccount, switchAccount, type SwitchedAccount } from '@/lib/actAs'
+import { isPublicPage } from '@/lib/publicPages'
 
 // Always-visible reminder while the platform admin is working inside a client's account.
 export default function SwitchedAccountBanner() {
@@ -13,7 +14,7 @@ export default function SwitchedAccountBanner() {
 
   useEffect(() => { setAccount(getSwitchedAccount()) }, [])
 
-  if (!account || pathname === '/login' || pathname?.startsWith('/book/')) return null
+  if (!account || pathname === '/login' || isPublicPage(pathname)) return null
 
   return (
     <div className="sticky top-0 z-40 flex items-center justify-center gap-3 border-b border-amber-400/30 bg-amber-500/15 px-4 py-2 text-sm text-amber-100 backdrop-blur">

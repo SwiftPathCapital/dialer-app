@@ -16,6 +16,7 @@ const TOGGLEABLE_FEATURES = [
   { key: '/sms',       label: 'SMS' },
   { key: '/voicemail', label: 'Voicemail' },
   { key: '/calendar',  label: 'Calendar' },
+  { key: '/contracts', label: 'Contracts' },
   { key: '/callbacks', label: 'Callbacks' },
   { key: '/calls',     label: 'Call Log' },
 ]
