@@ -19,3 +19,8 @@ interface SendEmailParams {
 export async function sendEmail({ to, subject, body }: SendEmailParams): Promise<void> {
   throw new Error(`Email is not connected yet — cannot send "${subject}" to ${to}. Wire up a provider in lib/email.ts.`)
 }
+
+// False until a provider is wired into sendEmail(); lets callers offer email only when it works.
+export function isEmailConfigured(): boolean {
+  return false
+}

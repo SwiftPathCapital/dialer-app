@@ -18,11 +18,13 @@ export const ACT_AS_HEADER = 'x-act-as-tenant'
 // Routes reachable without a signed-in user. Each has its own protection:
 //  - webhooks: called by Telnyx
 //  - book: public booking pages (rate-limited, expose only open times)
+//  - sign: e-signature links (the random token in the URL is the credential)
 //  - reminders/reports dispatch: shared-secret header from pg_cron
 //  - auth/session: sets cookies right after Supabase sign-in
 export const PUBLIC_API_PREFIXES = [
   '/api/webhooks/',
   '/api/book/',
+  '/api/sign/',
   '/api/reminders/dispatch',
   '/api/reports/dispatch',
   '/api/auth/session',
