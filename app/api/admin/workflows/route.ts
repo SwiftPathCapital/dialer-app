@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
+import { callerTenantId } from '@/lib/caller'
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const agentId = searchParams.get('agent_id')
-  if (!agentId) return NextResponse.json({ error: 'agent_id is required' }, { status: 400 })
-
+export async function GET() {
   const db = createServerClient()
-  const tenantId = await getAgentTenantId(db, agentId)
-  if (!tenantId) return NextResponse.json({ error: 'Unknown agent' }, { status: 404 })
+  const tenantId = await callerTenantId()
 
   const { data, error } = await db
     .from('dialer_workflows')
@@ -22,12 +17,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { name, agent_id, trigger_dispositions, nodes, edges } = await req.json()
+  const { name, trigger_dispositions, nodes, edges } = await req.json()
   if (!name?.trim()) return NextResponse.json({ error: 'name is required' }, { status: 400 })
 
   const db = createServerClient()
-  const tenantId = await getAgentTenantId(db, agent_id)
-  if (!tenantId) return NextResponse.json({ error: 'Unknown agent' }, { status: 404 })
+  const tenantId = await callerTenantId()
 
   const { data, error } = await db
     .from('dialer_workflows')
@@ -57,8 +51,8 @@ export async function PATCH(req: NextRequest) {
   if (edges !== undefined) updates.edges = edges
 
   const db = createServerClient()
-  const tenantId = await getAgentTenantId(db)
-  const { data, error } = await db.from('dialer_workflows').update(updates).eq('id', id).eq('tenant_id', tenantId ?? NO_TENANT).select().maybeSingle()
+  const tenantId = await callerTenantId()
+  const { data, error } = await db.from('dialer_workflows').update(updates).eq('id', id).eq('tenant_id', tenantId).select().maybeSingle()
   if (!error && !data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
@@ -70,8 +64,8 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
   const db = createServerClient()
-  const tenantId = await getAgentTenantId(db)
-  const { error } = await db.from('dialer_workflows').delete().eq('id', id).eq('tenant_id', tenantId ?? NO_TENANT)
+  const tenantId = await callerTenantId()
+  const { error } = await db.from('dialer_workflows').delete().eq('id', id).eq('tenant_id', tenantId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

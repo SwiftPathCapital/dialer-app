@@ -23,6 +23,49 @@ function rateLimited(ip: string): boolean {
 
 type Params = { params: Promise<{ tenant: string; slug: string }> }
 
+type Db = ReturnType<typeof createServerClient>
+
+// Every booking is saved as a lead. An existing lead with the same phone is reused and only
+// has its blank fields filled in — a booking never overwrites what an agent already entered.
+async function upsertBookingLead(db: Db, tenantId: string, b: {
+  phone: string; ten: string; name: string; first: string; lastName: string | null; email: string; source: string; hostId: string | null
+}): Promise<string | null> {
+  const { data: existing } = await db
+    .from('leads')
+    .select('id, name, first_name, last_name, email')
+    .eq('tenant_id', tenantId)
+    .ilike('phone', `%${b.ten}%`)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (existing) {
+    const fill: Record<string, string> = {}
+    if (!existing.email) fill.email = b.email
+    if (!existing.name) fill.name = b.name
+    if (!existing.first_name) fill.first_name = b.first
+    if (!existing.last_name && b.lastName) fill.last_name = b.lastName
+    if (Object.keys(fill).length) {
+      const { error } = await db.from('leads').update(fill).eq('id', existing.id).eq('tenant_id', tenantId)
+      if (error) console.error('[booking] could not update lead', existing.id, error)
+    }
+    return existing.id
+  }
+
+  const { data: lead, error } = await db
+    .from('leads')
+    .insert({
+      tenant_id: tenantId, name: b.name, first_name: b.first, last_name: b.lastName,
+      phone: b.phone, email: b.email, status: 'New', lead_type: 'Booking Page', lead_type_label: b.source,
+      assigned_to: b.hostId,
+    })
+    .select('id')
+    .single()
+  // Don't lose the appointment over this, but make it visible: the booking is still saved.
+  if (error || !lead) console.error('[booking] could not create lead for booking', error)
+  return lead?.id ?? null
+}
+
 export async function GET(_req: NextRequest, { params }: Params) {
   const { tenant: tenantSlug, slug } = await params
   const db = createServerClient()
@@ -85,26 +128,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const phone = `+1${ten}`
-  const { data: existingLead } = await db
-    .from('leads')
-    .select('id')
-    .eq('tenant_id', page.tenant_id)
-    .ilike('phone', `%${ten}%`)
-    .limit(1)
-    .maybeSingle()
-  let leadId = existingLead?.id ?? null
-  if (!leadId) {
-    const [first, ...rest] = name.split(/\s+/)
-    const { data: lead } = await db
-      .from('leads')
-      .insert({
-        tenant_id: page.tenant_id, name, first_name: first, last_name: rest.join(' ') || null,
-        phone, email, status: 'New', lead_type: 'Booking Page', lead_type_label: page.title,
-      })
-      .select('id')
-      .single()
-    leadId = lead?.id ?? null
-  }
+  const [first, ...rest] = name.split(/\s+/)
+  const lastName = rest.join(' ') || null
+  // Personal booking pages assign a new lead to the calendar's owner; team pages leave it
+  // in the shared pool.
+  const hostId = calendar.type === 'personal' ? calendar.owner_agent_id : null
+  const leadId = await upsertBookingLead(db, page.tenant_id, { phone, ten, name, first, lastName, email, source: page.title, hostId })
 
   const startIso = new Date(startMs).toISOString()
   const { data: event, error } = await db
@@ -112,7 +141,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     .insert({
       tenant_id: page.tenant_id,
       calendar_id: page.calendar_id,
-      agent_id: calendar.type === 'personal' ? calendar.owner_agent_id : null,
+      agent_id: hostId,
       lead_id: leadId,
       lead_name: name,
       lead_phone: phone,
@@ -138,6 +167,17 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (clash && clash.length > 1 && clash[0].id !== event.id) {
     await db.from('dialer_callbacks').delete().eq('id', event.id)
     return NextResponse.json({ error: 'That time was just taken. Please pick another.' }, { status: 409 })
+  }
+
+  // Leave a record on the lead so the booking shows in its notes and activity history.
+  if (leadId) {
+    const when = new Date(startMs).toLocaleString('en-US', { timeZone: page.timezone, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+    const detail = [`${when} (${page.duration_minutes} min)`, `Email: ${email}`, notes && `Notes: ${notes}`].filter(Boolean).join('\n')
+    const [comment, activity] = await Promise.all([
+      db.from('lead_comments').insert({ tenant_id: page.tenant_id, lead_id: leadId, agent_id: hostId, agent_name: 'Booking page', content: `[Booked · ${page.title}]\n${detail}` }),
+      db.from('activities').insert({ tenant_id: page.tenant_id, lead_id: leadId, agent_id: hostId, type: 'booking', notes: `${page.title}: ${detail}` }),
+    ])
+    if (comment.error || activity.error) console.error('[booking] could not log booking on lead', leadId, comment.error ?? activity.error)
   }
 
   return NextResponse.json({ ok: true, start: startIso, duration_minutes: page.duration_minutes })

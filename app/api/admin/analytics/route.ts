@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { getAgentTenantId, NO_TENANT } from '@/lib/caller'
+import { callerTenantId } from '@/lib/caller'
 
 function rangeStart(range: string): string {
   const now = new Date()
@@ -23,12 +23,11 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const range = searchParams.get('range') || 'today'
   const detail = searchParams.get('detail') // 'all' | 'inbound' | 'outbound' | 'apps' | 'funded'
-  const agentId = searchParams.get('agent_id')
   // Distinct from agent_id (the requesting admin, used only to resolve tenant) — this
   // narrows the whole report to one agent's calls when set.
   const filterAgentId = searchParams.get('filter_agent_id')
   const db = createServerClient()
-  const tenantId = await getAgentTenantId(db, agentId)
+  const tenantId = await callerTenantId()
 
   // Exclude ghost rows created by old Dialpad double-POST bug (null telnyx_call_control_id)
   let baseQuery = db
@@ -36,7 +35,7 @@ export async function GET(req: NextRequest) {
     .select('direction, disposition, status, from_number, to_number, started_at, duration_seconds, agent_id, agents(id, name)')
     .gte('started_at', rangeStart(range))
     .not('telnyx_call_control_id', 'is', null)
-  baseQuery = baseQuery.eq('tenant_id', tenantId ?? NO_TENANT)
+  baseQuery = baseQuery.eq('tenant_id', tenantId)
 
   const { data: allCalls } = await baseQuery
   if (!allCalls) return NextResponse.json({ error: 'Query failed' }, { status: 500 })

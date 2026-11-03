@@ -64,6 +64,12 @@ export async function agentInTenant(db: Db, agentId: string | null | undefined, 
   return !!data
 }
 
+// The signed-in caller's tenant for a route's queries, or NO_TENANT (matches nothing) when
+// there is no caller — so a request that somehow skipped the proxy fails closed.
+export async function callerTenantId(): Promise<string> {
+  return (await getCaller())?.tenantId ?? NO_TENANT
+}
+
 // Filter value that matches no rows — used so a missing tenant fails closed (empty
 // result) instead of open (every tenant's rows).
 export const NO_TENANT = '00000000-0000-0000-0000-000000000000'

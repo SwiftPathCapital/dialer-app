@@ -2,11 +2,20 @@ import { createServerClient } from './supabase'
 import { sendSms } from './sms'
 import { sendEmail } from './email'
 
+type ActionKind = 'sms' | 'tag' | 'callback' | 'email'
+
+// The builder (app/admin/workflows) saves every action as a React Flow node of type
+// 'action' with the action in data.kind; nodes typed by kind directly are accepted too.
 interface WorkflowNode {
   id: string
-  type: 'trigger' | 'sms' | 'tag' | 'callback' | 'email'
+  type: 'trigger' | 'action' | ActionKind
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any
+}
+
+function actionKind(node: WorkflowNode): ActionKind | null {
+  const kind = node.type === 'action' ? node.data?.kind : node.type
+  return kind === 'sms' || kind === 'tag' || kind === 'callback' || kind === 'email' ? kind : null
 }
 
 interface WorkflowEdge {
@@ -35,18 +44,16 @@ function renderTemplate(template: string, vars: Record<string, string>): string 
 // Runs every enabled workflow whose trigger_dispositions includes this disposition.
 // Fire-and-forget from the caller — errors here should never block a disposition save.
 export async function runWorkflowsForDisposition({ tenantId, disposition, leadId, agentId, leadPhone, callbackAt }: RunWorkflowsParams): Promise<void> {
-  if (!leadId) return // tag/callback/SMS actions all need a real lead
+  if (!leadId || !tenantId) return // actions need a real lead; never run without an account
 
   const db = createServerClient()
 
-  let workflowQuery = db
+  const { data: workflows } = await db
     .from('dialer_workflows')
     .select('id, nodes, edges')
     .eq('enabled', true)
+    .eq('tenant_id', tenantId)
     .contains('trigger_dispositions', [disposition])
-  if (tenantId) workflowQuery = workflowQuery.eq('tenant_id', tenantId)
-
-  const { data: workflows } = await workflowQuery
   if (!workflows || workflows.length === 0) return
 
   const [{ data: lead }, { data: agent }] = await Promise.all([
@@ -68,23 +75,24 @@ export async function runWorkflowsForDisposition({ tenantId, disposition, leadId
     const actionNodes = nodes.filter(n => actionNodeIds.includes(n.id))
 
     await Promise.all(actionNodes.map(async node => {
+      const kind = actionKind(node)
       try {
-        if (node.type === 'sms') {
+        if (kind === 'sms') {
           if (!phone || !agent?.did) return
           const message = renderTemplate(node.data?.message || '', templateVars)
           if (!message.trim()) return
           await sendSms({ from: agent.did, to: phone, body: message, agentId })
-        } else if (node.type === 'email') {
+        } else if (kind === 'email') {
           if (!lead?.email) return
           const subject = renderTemplate(node.data?.subject || '', templateVars)
           const body = renderTemplate(node.data?.body || '', templateVars)
           if (!subject.trim() && !body.trim()) return
           await sendEmail({ to: lead.email, subject, body })
-        } else if (node.type === 'tag') {
+        } else if (kind === 'tag') {
           const tagId = node.data?.tagId
           if (!tagId) return
           await db.from('lead_tags').upsert({ lead_id: leadId, tag_id: tagId }, { onConflict: 'lead_id,tag_id' })
-        } else if (node.type === 'callback') {
+        } else if (kind === 'callback') {
           // The disposition flow itself already scheduled a callback at the agent's chosen
           // time (e.g. the "Callback" disposition's date/time picker) — creating another one
           // here would just duplicate it at the wrong (offset-based) time.
@@ -109,7 +117,7 @@ export async function runWorkflowsForDisposition({ tenantId, disposition, leadId
             notes: node.data?.notes || null,
             event_type: node.data?.eventType || 'callback',
             calendar_id: personalCal?.id ?? null,
-            ...(tenantId ? { tenant_id: tenantId } : {}),
+            tenant_id: tenantId,
           })
         }
       } catch (err) {

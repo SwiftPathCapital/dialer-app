@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { getAgentTenantId, agentInTenant } from '@/lib/caller'
+import { callerTenantId, agentInTenant } from '@/lib/caller'
 
 type Db = ReturnType<typeof createServerClient>
 
 // Both the calendar and the agent must belong to the caller's tenant.
 async function guard(db: Db, calendarId: string, agentId: string) {
-  const tenantId = await getAgentTenantId(db)
-  if (!tenantId) return { error: NextResponse.json({ error: 'Unknown account' }, { status: 400 }) }
+  const tenantId = await callerTenantId()
   const { data: cal } = await db.from('calendars').select('id, type, owner_agent_id').eq('id', calendarId).eq('tenant_id', tenantId).maybeSingle()
   if (!cal) return { error: NextResponse.json({ error: 'Calendar not found' }, { status: 404 }) }
   if (!(await agentInTenant(db, agentId, tenantId))) return { error: NextResponse.json({ error: 'That person isn\'t in your account' }, { status: 400 }) }
