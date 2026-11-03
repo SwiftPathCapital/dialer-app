@@ -3,6 +3,7 @@ import { createServerClient } from '@/lib/supabase'
 import { getCaller, isAdmin, unauthorized, switchedAccount } from '@/lib/caller'
 import { cleanFieldValues, renderBody, sha256, newSigningToken, logContractEvent, requestIp, LINK_TTL_DAYS, type TemplateField } from '@/lib/contracts'
 import { deliverSigningLink } from '@/lib/contractSend'
+import { isEmailConfigured } from '@/lib/email'
 import { CONTRACT_LIST_COLUMNS, toListRow } from '@/lib/contractRows'
 
 export async function GET(req: NextRequest) {
@@ -33,6 +34,7 @@ export async function POST(req: NextRequest) {
   const b = await req.json().catch(() => ({}))
   const delivery = b.delivery === 'email' ? 'email' : b.delivery === 'sms' ? 'sms' : null
   if (!delivery) return NextResponse.json({ error: 'Choose text or email.' }, { status: 400 })
+  if (delivery === 'email' && !isEmailConfigured()) return NextResponse.json({ error: 'Email isn\'t connected yet. Send by text for now.' }, { status: 409 })
   const db = createServerClient()
 
   const { data: tpl } = await db.from('dialer_contract_templates')

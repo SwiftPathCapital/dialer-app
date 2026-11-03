@@ -21,16 +21,17 @@ function rateLimited(ip: string): boolean {
 async function load(token: string) {
   const db = createServerClient()
   const { data: c } = await db.from('dialer_contracts')
-    .select('id, tenant_id, template_name, signer_name, rendered_body, body_hash, status, expires_at, amount_cents, currency, viewed_at, signed_at, signature_name, signed_pdf_path, tenants(name)')
+    .select('id, tenant_id, template_name, signer_name, rendered_body, body_hash, status, expires_at, amount_cents, currency, viewed_at, signed_at, signature_name, signed_pdf_path')
     .eq('token_hash', sha256(token)).maybeSingle()
-  return { db, c }
+  if (!c) return { db, c: null, business: '' }
+  const { data: tenant } = await db.from('tenants').select('name').eq('id', c.tenant_id).maybeSingle()
+  return { db, c, business: tenant?.name ?? '' }
 }
 
 export async function GET(req: NextRequest, { params }: Params) {
   const { token } = await params
-  const { db, c } = await load(token)
+  const { db, c, business } = await load(token)
   if (!c) return NextResponse.json({ error: 'This signing link isn\'t valid. Ask the sender for a new one.' }, { status: 404 })
-  const business = (c.tenants as unknown as { name: string } | null)?.name ?? ''
   const status = effectiveStatus(c)
   const base = { status, business_name: business, template_name: c.template_name, signer_name: c.signer_name }
   if (status === 'voided' || status === 'expired') return NextResponse.json(base, { headers: { 'Cache-Control': 'no-store' } })
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const b = await req.json().catch(() => null)
   if (!b) return NextResponse.json({ error: 'Bad request' }, { status: 400 })
 
-  const { db, c } = await load(token)
+  const { db, c, business } = await load(token)
   if (!c) return NextResponse.json({ error: 'This signing link isn\'t valid.' }, { status: 404 })
   const status = effectiveStatus(c)
   if (status === 'signed') return NextResponse.json({ error: 'This document is already signed.' }, { status: 409 })
@@ -74,7 +75,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'This document failed an integrity check and can\'t be signed. Ask the sender for a new link.' }, { status: 409 })
   }
 
-  const business = (c.tenants as unknown as { name: string } | null)?.name ?? ''
   const now = new Date().toISOString()
   const ua = req.headers.get('user-agent')
   const consent = consentText(business)

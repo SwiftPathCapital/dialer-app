@@ -7,15 +7,16 @@ type Db = ReturnType<typeof createServerClient>
 // call again (e.g. if generation failed at signing time). Returns the storage path.
 export async function ensureSignedPdf(db: Db, contractId: string): Promise<string | null> {
   const { data: c } = await db.from('dialer_contracts')
-    .select('id, tenant_id, template_name, rendered_body, body_hash, signer_name, signer_email, signer_phone, signature_name, signature_image, signed_at, signer_ip, sent_ip, consent_text, signed_pdf_path, status, agents(name)')
+    .select('id, tenant_id, template_name, rendered_body, body_hash, signer_name, signer_email, signer_phone, signature_name, signature_image, signed_at, signer_ip, sent_ip, consent_text, signed_pdf_path, status, agent_id')
     .eq('id', contractId).maybeSingle()
   if (!c || c.status !== 'signed') return null
   if (c.signed_pdf_path) return c.signed_pdf_path
 
   const png = decodeSignaturePng(c.signature_image)
   if (!png || !c.signed_at || !c.signature_name) return null
-  const [{ data: tenant }, { data: events }] = await Promise.all([
+  const [{ data: tenant }, { data: sender }, { data: events }] = await Promise.all([
     db.from('tenants').select('name').eq('id', c.tenant_id).maybeSingle(),
+    c.agent_id ? db.from('agents').select('name').eq('id', c.agent_id).maybeSingle() : Promise.resolve({ data: null }),
     db.from('dialer_contract_events').select('event, at, ip, user_agent').eq('contract_id', c.id).order('at'),
   ])
   const businessName = tenant?.name || ''
@@ -28,7 +29,7 @@ export async function ensureSignedPdf(db: Db, contractId: string): Promise<strin
     signerName: c.signer_name,
     signerEmail: c.signer_email,
     signerPhone: c.signer_phone,
-    senderName: (c.agents as unknown as { name: string } | null)?.name ?? null,
+    senderName: sender?.name ?? null,
     signatureName: c.signature_name,
     signaturePng: png,
     signedAt: c.signed_at,

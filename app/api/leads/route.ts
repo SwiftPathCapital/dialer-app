@@ -13,10 +13,11 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get('search') || ''
   const limit = Math.min(parseInt(searchParams.get('limit') || '100') || 100, 1000)
   const countOnly = searchParams.get('count') === '1'
+  const browse = searchParams.get('view') === 'browse'
 
   const db = createServerClient()
   const tenantId = caller.tenantId
-  const filterOpts = { agentId, phone, search, tenantId }
+  const filterOpts = { agentId, phone, search, tenantId, browse }
 
   if (countOnly) {
     const countQuery = await applyLeadFilters(db, db.from('leads').select('id', { count: 'exact', head: true }), filterOpts)
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
   // Dialer queue: never-called leads first, then whichever eligible lead has gone
   // longest without a call — so a fresh load works through new leads before recycling
   // old ones, instead of always the same newest-by-creation slice.
-  query = (agentId && !phone && !search)
+  query = (agentId && !phone && !search && !browse)
     ? query.order('last_called_at', { ascending: true, nullsFirst: true }).order('created_at', { ascending: true })
     : query.order('created_at', { ascending: false })
 

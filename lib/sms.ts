@@ -31,9 +31,9 @@ export async function sendSms({ from: requestedFrom, to, body, agentId, conversa
   }
 
   // Send via Telnyx first — don't create a conversation record for a message that never went out
+  // Telnyx SDK v6: messages.send (the old v1 messages.create no longer exists).
   const telnyx = await getTelnyxClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result = await (telnyx.messages as any).create({ from, to, text: body })
+  const result = await telnyx.messages.send({ from, to, text: body })
   const telnyxId = result?.data?.id || null
 
   // No conversationId means this is the first message to a contact who's never texted in —
