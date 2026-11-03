@@ -17,5 +17,5 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   // Pick the fields explicitly so the contract text can never reach an agent's browser.
   const templates = (data ?? []).map(t => ({ id: t.id, name: t.name, fields: t.fields, amount_field: t.amount_field }))
-  return NextResponse.json({ templates, email_available: isEmailConfigured() })
+  return NextResponse.json({ templates, email_available: await isEmailConfigured(caller.tenantId) })
 }

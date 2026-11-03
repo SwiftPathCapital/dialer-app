@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Building2, Plus, Users, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import DialerSettingsPanel from '@/components/DialerSettingsPanel'
+import EmailSenderPanel from '@/components/EmailSenderPanel'
 
 interface Tenant {
   id: string
@@ -285,6 +286,9 @@ export default function PlatformTenantsPage() {
                     </p>
                     <div className="mt-5">
                       <DialerSettingsPanel agentId={agent.id} tenantId={t.id} tenantName={t.name} />
+                    </div>
+                    <div className="mt-5">
+                      <EmailSenderPanel tenantId={t.id} tenantName={t.name} />
                     </div>
                   </div>
                 )}

@@ -40,12 +40,12 @@ export async function POST(req: NextRequest) {
       const subject = `${TEMPLATE_LABELS[template]} report — ${now.toISOString().slice(0, 10)}`
       const body = `<p>${TEMPLATE_LABELS[template]} · ${rows.length} rows</p>${rowsToHtmlTable(columns, rows)}`
       for (const to of schedule.recipients as string[]) {
-        await sendEmail({ to, subject, body })
+        await sendEmail({ tenantId: schedule.tenant_id, to, subject, text: `${TEMPLATE_LABELS[template]} · ${rows.length} rows. Open this email in an HTML-capable mail app to see the table.`, html: body })
       }
       sent++
     } catch (err) {
-      // Email isn't connected yet (lib/email.ts throws) — fail this schedule quietly
-      // so the rest of the run still completes.
+      // e.g. this account's email domain isn't verified yet (sendEmail throws) — fail this
+      // schedule quietly so the rest of the run still completes.
       failed++
       console.error(`Report dispatch failed for schedule ${schedule.id}:`, err)
     }

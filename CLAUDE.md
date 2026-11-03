@@ -40,7 +40,7 @@ There is **no other app sharing this Supabase project** today. (Older notes desc
 - Login (`app/login`) uses `supabase.auth.signInWithPassword`, then loads the `agents` row into React context + `localStorage` (8-hour expiry) and sets HttpOnly cookies via `/api/auth/session`.
 - `lib/authFetch.ts` patches `window.fetch` (installed at module load in `SoftphoneContext`) to add `Authorization: Bearer <supabase access token>` to every same-origin `/api/*` call. A 401 with `code: 'session_required'` clears the saved agent and sends the user to `/login`.
 - `proxy.ts` (Next 16's middleware) runs on every `/api/*` request: it strips any incoming `x-caller-*` headers, verifies the token with `supabase.auth.getUser`, loads the `agents` row (30 s cache), and passes `x-caller-id / -tenant / -role / -platform-admin` to the route. It also enforces `/api/admin/*` = admin (except `GET /api/admin/tags`) and `/api/platform/*` = platform admin.
-- Public (no token): `/api/webhooks/*`, `/api/book/*`, `/api/reminders/dispatch`, `/api/reports/dispatch`, `/api/auth/session` — listed in `lib/callerHeaders.ts`.
+- Public (no token): `/api/webhooks/*`, `/api/book/*`, `/api/sign/*` (public e-signature pages), `/api/reminders/dispatch`, `/api/reports/dispatch`, `/api/auth/session` — listed in `lib/callerHeaders.ts`.
 - **In routes, identity and tenant come only from `getCaller()` (`lib/caller.ts`)** — never from an `agent_id`/`tenant_id` in the body or query. Every update/delete by id must also filter `.eq('tenant_id', caller.tenantId)`. `getAgentTenantId()` returns the caller's tenant when there is one and only looks up the given agent for webhooks/jobs.
 - **Switched account:** while the platform admin has switched into a client (`lib/actAs.ts`, localStorage `dialer_act_as`), the browser sends `x-act-as-tenant`. `proxy.ts` honors it only for platform admins and only for an existing tenant (anyone else gets 403 `act_as_invalid`). Routes then see `caller.tenantId` = the client and `caller.homeTenantId` = the admin's own, with `caller.actingAs = true`. Personal actions refuse with `switchedAccount()` while switched (placing calls, preflight, predictive Start, scheduling an event for yourself); handling the admin's *own* calls (answer/end/disposition) uses `homeTenantId`. Switches are logged by `POST /api/platform/act-as`.
 
@@ -53,7 +53,7 @@ There is **no other app sharing this Supabase project** today. (Older notes desc
      and tenant_id = (select a.tenant_id from agents a where a.id = (select auth.uid())))
   ```
 - Webhooks resolve the tenant from the **dialed number** (group number → agent DID), then stamp that tenant on every row they write.
-- `app_config` is keyed `(tenant_id, key)`. **Gotcha:** `getConfigValue()` in `lib/telnyx.ts` reads by key only with `.single()`. The Telnyx keys and `app_url` are **platform-wide** (they live under the SwiftPath tenant and serve every tenant); `POST /api/config` lets only the platform admin change them and updates the existing row in place, so a second row can't appear. Mailbox (`spacemail_*`) keys are per tenant. Per-tenant Telnyx accounts would need `getConfigValue` reworked first.
+- `app_config` is keyed `(tenant_id, key)`. **Gotcha:** `getConfigValue()` in `lib/telnyx.ts` reads by key only with `.single()`. The Telnyx keys, `resend_api_key` and `app_url` are **platform-wide** (they live under the SwiftPath tenant and serve every tenant); `POST /api/config` lets only the platform admin change them and updates the existing row in place, so a second row can't appear. Mailbox (`spacemail_*`) keys are per tenant. Per-tenant Telnyx accounts would need `getConfigValue` reworked first.
 
 ## Main features
 - **Softphone / dialer queue** (`/dashboard`): per-agent Telnyx WebRTC softphone; queue = never-called first, then longest-since-called; 8-hour cooldown after a call/disposition; dead statuses excluded; wrap-up (notes → disposition), callbacks, tags, new-lead capture for unknown numbers.
@@ -74,12 +74,12 @@ There is **no other app sharing this Supabase project** today. (Older notes desc
 | `dialer-reminder-dispatch` | every 5 min | `POST /api/reminders/dispatch` | `x-reminder-secret` = `REMINDER_DISPATCH_SECRET` |
 | `dialer-report-dispatch` | hourly | `POST /api/reports/dispatch` | `x-report-secret` = `REPORT_DISPATCH_SECRET` |
 
-Email sending (`lib/email.ts`) is a **stub that throws** until a provider is connected; callers catch and log.
+Email sending (`lib/email.ts`) goes through **Resend**, from **each client's own domain**: one platform API key (`app_config` `resend_api_key`, Admin → Config, platform admin only), and one `dialer_email_senders` row per tenant (domain, from name/address, reply-to, DNS records, status). The platform admin adds a client's domain on the Clients page (`/api/platform/email-sender`), the client adds the DNS records, and mail sends only once the status is `verified`; `sendEmail()` throws otherwise and callers catch and log. Contracts by email, workflow "Send email" actions and scheduled reports all use it.
 
 ## Supabase tables (public)
 `activities, agents, app_config, calendar_groups, calendar_members, calendar_visibility, calendars, dialer_callbacks, dialer_calls, dialer_reminder_log, dialer_report_schedules, dialer_workflows, inbound_group_members, inbound_groups, lead_comments, lead_sources, lead_tags, leads, moisture_projects, moisture_reading_points, moisture_readings, sms_conversations, sms_messages, tags, tenants, voicemails`
 
-Dialer add-ons (local presence, power/predictive): `dialer_tenant_settings, dialer_caller_ids, dialer_agent_sessions, dialer_dial_attempts`. `dialer_booking_pages` backs the public booking pages.
+Dialer add-ons (local presence, power/predictive): `dialer_tenant_settings, dialer_caller_ids, dialer_agent_sessions, dialer_dial_attempts`. `dialer_booking_pages` backs the public booking pages. E-signature: `dialer_contract_templates, dialer_contracts, dialer_contract_events` (+ private storage bucket `contracts`). Email: `dialer_email_senders`.
 
 Notes: `dialer_calls` rows with null `telnyx_call_control_id` are ghost rows from an old double-POST bug — exclude them from stats. PostgREST returns at most 1,000 rows per request; page with `.range()` for anything that can exceed that.
 

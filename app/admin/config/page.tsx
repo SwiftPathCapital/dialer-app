@@ -27,6 +27,7 @@ const SECTIONS = [
   {
     title: 'Telnyx',
     description: 'Connect your Telnyx account for voice and SMS. Find these in the Telnyx Portal.',
+    platformOnly: true,
     fields: [
       {
         key: 'telnyx_api_key',
@@ -59,8 +60,22 @@ const SECTIONS = [
     ],
   },
   {
-    title: 'Email (Spacemail)',
-    description: 'Connect your Spacemail mailbox so emails can be sent and received from the dialer.',
+    title: 'Email sending (Resend)',
+    description: 'One Resend account sends email for every client, each from its own domain. Add each client\'s domain on the Clients page; it sends once the DNS records are verified.',
+    platformOnly: true,
+    fields: [
+      {
+        key: 'resend_api_key',
+        label: 'Resend API Key',
+        description: 'From resend.com → API Keys. Needs "Full access" so the app can add client domains. Starts with "re_".',
+        sensitive: true,
+        placeholder: 're_...',
+      },
+    ],
+  },
+  {
+    title: 'Mailbox (Spacemail)',
+    description: 'Saved for a future inbox feature. Not used to send email: outgoing email goes through this account\'s verified domain.',
     fields: [
       {
         key: 'spacemail_email',
@@ -109,6 +124,7 @@ const SECTIONS = [
   {
     title: 'Application',
     description: 'General settings for this dialer deployment.',
+    platformOnly: true,
     fields: [
       {
         key: 'app_url',
@@ -324,7 +340,7 @@ export default function ConfigPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          {SECTIONS.map(section => {
+          {SECTIONS.filter(section => !section.platformOnly || agent?.is_platform_admin).map(section => {
             const sectionKey = section.fields.map(f => f.key).join(',')
             const isSaving = saving[sectionKey]
             const isSaved = saved[sectionKey]

@@ -37,7 +37,7 @@ export default function SendContractModal({ lead, onClose, onSent }: { lead: Con
   const [templateId, setTemplateId] = useState('')
   const [values, setValues] = useState<Record<string, string>>({})
   const [signer, setSigner] = useState({
-    signer_name: lead.name || [lead.first_name, lead.last_name].filter(Boolean).join(' '),
+    signer_name: [lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.name || '',
     signer_phone: lead.phone || '',
     signer_email: lead.email || '',
   })
@@ -142,8 +142,8 @@ export default function SendContractModal({ lead, onClose, onSent }: { lead: Con
                     <button type="button" onClick={() => setDelivery('sms')} className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm border ${delivery === 'sms' ? 'border-cyan-500 bg-cyan-500/10 text-cyan-200' : 'border-gray-700 text-gray-400 hover:text-white'}`}>
                       <MessageSquare className="w-4 h-4" /> Text
                     </button>
-                    <button type="button" onClick={() => emailAvailable && setDelivery('email')} disabled={!emailAvailable} title={emailAvailable ? '' : 'Email isn\'t connected yet'} className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm border ${delivery === 'email' ? 'border-cyan-500 bg-cyan-500/10 text-cyan-200' : 'border-gray-700 text-gray-400 hover:text-white'} disabled:opacity-40 disabled:cursor-not-allowed`}>
-                      <Mail className="w-4 h-4" /> Email{emailAvailable ? '' : ' (not connected)'}
+                    <button type="button" onClick={() => emailAvailable && setDelivery('email')} disabled={!emailAvailable} title={emailAvailable ? '' : 'Email isn\'t set up for this account yet'} className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm border ${delivery === 'email' ? 'border-cyan-500 bg-cyan-500/10 text-cyan-200' : 'border-gray-700 text-gray-400 hover:text-white'} disabled:opacity-40 disabled:cursor-not-allowed`}>
+                      <Mail className="w-4 h-4" /> Email{emailAvailable ? '' : ' (not set up)'}
                     </button>
                   </div>
                 </div>
