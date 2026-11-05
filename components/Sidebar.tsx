@@ -45,10 +45,6 @@ const ADMIN_NAV = [
   { href: '/admin/config',     icon: SlidersHorizontal,  label: 'Config',     dataTour: '', emoji: '⚙️' },
 ]
 
-// A slow cycling set for the "living" logo mark, in place of one static icon.
-const LOGO_CYCLE = ['✨', '🌌', '🛰️', '🚀']
-const LOGO_CYCLE_DURATION = 12 // seconds for the full cycle, must match globals.css's slot math (4 items @ 25% each)
-
 const STATUS_OPTIONS = [
   { value: 'available', label: 'Available', emoji: '🛰️', dot: 'bg-green-500', text: 'text-green-400' },
   { value: 'busy',      label: 'Busy',      emoji: '☄️', dot: 'bg-yellow-500', text: 'text-yellow-400' },
@@ -187,22 +183,9 @@ export default function Sidebar() {
         <div className="absolute bottom-0 right-0 w-36 h-36 rounded-full bg-teal-400/20 blur-3xl" />
       </div>
 
-      {/* Logo — a small cycling emoji mark instead of one static icon */}
-      <div className="relative px-4 py-5 border-b border-cyan-500/10 flex items-center gap-2">
-        <div className="relative w-5 h-5 shrink-0 drop-shadow-[0_0_6px_rgba(34,211,238,0.8)]" aria-hidden>
-          {LOGO_CYCLE.map((emoji, i) => (
-            <span
-              key={emoji}
-              className="logo-cycle-item absolute inset-0 flex items-center justify-center text-base leading-none"
-              style={{
-                animationDuration: `${LOGO_CYCLE_DURATION}s`,
-                animationDelay: `${-(i * (LOGO_CYCLE_DURATION / LOGO_CYCLE.length))}s`,
-              }}
-            >
-              {emoji}
-            </span>
-          ))}
-        </div>
+      {/* Logo — the Apex mark (transparent background) */}
+      <div className="relative px-3 py-4 border-b border-cyan-500/10 flex items-center gap-2">
+        <img src="/apex-logo.webp" alt="Apex" width={48} height={48} className={`${collapsed ? 'w-10 h-10' : 'w-10 h-10 md:w-12 md:h-12'} shrink-0 drop-shadow-[0_0_8px_rgba(168,85,247,0.45)]`} />
         <span className={`${lbl} font-bold text-lg tracking-wide bg-gradient-to-r from-cyan-300 via-teal-200 to-purple-300 bg-clip-text text-transparent`}>
           Dialer
         </span>
