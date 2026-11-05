@@ -14,6 +14,7 @@ interface Orb {
   icon: LucideIcon
   href: string
   live: boolean // true = fully functional today, false = coming soon
+  adminHref?: string // live only for admins who can see this admin page; everyone else gets `href` (coming soon)
   glow: string // each orb pulses its own neon color, matching that page's own theme color elsewhere in the app
 }
 
@@ -25,7 +26,7 @@ const ORBS: Orb[] = [
   { key: 'calendar',   label: 'Calendar',    icon: CalendarDays,  href: '/calendar',     live: true,  glow: '#f472b6' },
   { key: 'tasks',      label: 'Tasks',       icon: ListTodo,      href: '/tasks',        live: false, glow: '#34d399' },
   { key: 'reputation', label: 'Reputation',  icon: Star,          href: '/reputation',   live: false, glow: '#fbbf24' },
-  { key: 'reporting',  label: 'Reporting',   icon: BarChart3,     href: '/reporting',    live: false, glow: '#a78bfa' },
+  { key: 'reporting',  label: 'Reporting',   icon: BarChart3,     href: '/reporting',    live: false, glow: '#a78bfa', adminHref: '/admin/analytics' },
   { key: 'ads',        label: 'Ads Manager', icon: Megaphone,     href: '/ads-manager',  live: false, glow: '#fb923c' },
   { key: 'social',     label: 'Social',      icon: Share2,        href: '/social',       live: false, glow: '#f472b6' },
   { key: 'webadmin',   label: 'Web Admin',   icon: Globe,         href: '/web-admin',    live: false, glow: '#818cf8' },
@@ -82,15 +83,19 @@ export default function ControlCenterPage() {
   // Orbiting icons pause on hover so they're actually easy to click, not just decorative
   const ringPlayState: 'running' | 'paused' = animPlayState === 'paused' || ringHovered ? 'paused' : 'running'
 
+  // Admin-only orbs (Reporting → Analytics) are live for admins whose account shows that page.
+  const isAdminUser = agent?.role === 'admin' || !!agent?.is_platform_admin
+  const hiddenPages = useMemo(() => [...(agent?.hidden_features ?? []), ...(agent?.tenant_hidden_features ?? [])], [agent])
   const positioned = useMemo(() => {
     return ORBS.map((orb, i) => {
       const angle = (360 / ORBS.length) * i - 90 // start at top, go clockwise
       const rad = (angle * Math.PI) / 180
       const x = Math.cos(rad) * radius
       const y = Math.sin(rad) * radius
-      return { ...orb, x, y }
+      const adminLive = !!orb.adminHref && isAdminUser && !hiddenPages.includes(orb.adminHref)
+      return { ...orb, live: orb.live || adminLive, href: adminLive ? orb.adminHref! : orb.href, x, y }
     })
-  }, [radius])
+  }, [radius, isAdminUser, hiddenPages])
 
   // Decorative orbiting orbs — generated once on mount (client-only, so no SSR
   // hydration mismatch from Math.random since this page never renders real
