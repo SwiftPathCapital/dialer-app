@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Building2, Plus, Users, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { useSoftphone } from '@/lib/SoftphoneContext'
 import DialerSettingsPanel from '@/components/DialerSettingsPanel'
+import EmailSenderPanel from '@/components/EmailSenderPanel'
 
 interface Tenant {
   id: string
@@ -22,6 +23,7 @@ const TOGGLEABLE_FEATURES = [
   { href: '/contact-center', label: 'Conversations' },
   { href: '/voicemail', label: 'Voicemail' },
   { href: '/calendar', label: 'Calendar' },
+  { href: '/contracts', label: 'Contracts' },
   { href: '/callbacks', label: 'Callbacks' },
   { href: '/calls', label: 'Call Log' },
   { href: '/moisture-mapping', label: 'Moisture Mapping' },
@@ -32,6 +34,7 @@ const TOGGLEABLE_FEATURES = [
   { href: '/admin/callbacks', label: 'Admin: Callbacks' },
   { href: '/admin/calendars', label: 'Admin: Calendars' },
   { href: '/admin/booking', label: 'Admin: Booking Pages' },
+  { href: '/admin/contracts', label: 'Admin: Contracts' },
   { href: '/admin/groups', label: 'Admin: Groups' },
   { href: '/admin/tags', label: 'Admin: Tags' },
   { href: '/admin/dialer-settings', label: 'Admin: Dialer Settings' },
@@ -283,6 +286,9 @@ export default function PlatformTenantsPage() {
                     </p>
                     <div className="mt-5">
                       <DialerSettingsPanel agentId={agent.id} tenantId={t.id} tenantName={t.name} />
+                    </div>
+                    <div className="mt-5">
+                      <EmailSenderPanel tenantId={t.id} tenantName={t.name} />
                     </div>
                   </div>
                 )}

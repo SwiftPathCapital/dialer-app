@@ -13,6 +13,10 @@ export interface LeadFilterOpts {
   // Predictive dialing pulls from the whole tenant pool: unassigned leads plus leads assigned
   // to any of these agents. When set, the per-agent assignment filter is replaced by this.
   assignedToAnyOf?: string[]
+  // The Leads page: the agent's visible leads (assigned to them or unassigned) without the
+  // "who's next to call" rules — a lead just called, outside calling hours, or already
+  // closed must still be openable (e.g. to send a contract right after the call).
+  browse?: boolean
 }
 
 // Shared by the Softphone queue (/api/leads) and the predictive pacer so both use exactly
@@ -22,7 +26,7 @@ export interface LeadFilterOpts {
 // awaiting this async function executes the query and resolves to { data, error }.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function applyLeadFilters(db: any, query: any, opts: LeadFilterOpts): Promise<any> {
-  const { agentId, phone, search, tenantId, assignedToAnyOf } = opts
+  const { agentId, phone, search, tenantId, assignedToAnyOf, browse } = opts
 
   query = query.eq('tenant_id', tenantId)
 
@@ -56,6 +60,8 @@ export async function applyLeadFilters(db: any, query: any, opts: LeadFilterOpts
         query = query.or(`assigned_to.eq.${agentId},assigned_to.is.null`)
       }
     }
+
+    if (browse) return query
 
     const { data: sourceRows } = await db.from('lead_sources').select('name').eq('enabled', true).eq('tenant_id', tenantId)
 

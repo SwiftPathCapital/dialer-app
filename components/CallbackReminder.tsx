@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Phone, X, Bell, ChevronDown, ChevronUp, Check } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useSoftphone } from '@/lib/SoftphoneContext'
+import { isPublicPage } from '@/lib/publicPages'
 
 interface Callback {
   id: string
@@ -88,8 +89,8 @@ export default function CallbackReminder() {
   const upcomingItems = callbacks.filter(c => !dismissed.has(c.id) && !isAlertWorthy(c))
   const visible = [...alertItems, ...(expanded ? upcomingItems : [])]
 
-  // Public booking pages are customer-facing; don't overlay an agent's reminders on them.
-  if (pathname?.startsWith('/book/')) return null
+  // Booking and signing pages are customer-facing; don't overlay an agent's reminders on them.
+  if (isPublicPage(pathname)) return null
   if (callbacks.filter(c => !dismissed.has(c.id)).length === 0) return null
 
   const overdue = alertItems.filter(c => new Date(c.scheduled_at).getTime() < now)

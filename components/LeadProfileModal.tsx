@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { X, Phone, Building2, Tag as TagIcon } from 'lucide-react'
 import { Lead, Tag } from '@/lib/types'
+import ContractsPanel, { useContractsEnabled } from '@/components/ContractsPanel'
 
 const STATUSES = [
   'New', 'Interested', 'Callback', 'App Received', 'Docs Received', 'Pending App & Docs',
@@ -32,6 +33,7 @@ function Field({ label, value, onChange, type = 'text' }: { label: string; value
 }
 
 export default function LeadProfileModal({ lead, agentId, onClose, onSaved, onCall }: Props) {
+  const contractsEnabled = useContractsEnabled()
   const [form, setForm] = useState({
     first_name: lead.first_name || '',
     last_name: lead.last_name || '',
@@ -136,6 +138,8 @@ export default function LeadProfileModal({ lead, agentId, onClose, onSaved, onCa
               {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
+
+          {contractsEnabled && <ContractsPanel lead={{ ...lead, ...form }} compact />}
 
           <div>
             <p className="text-gray-400 text-xs font-semibold uppercase tracking-widest mb-2 flex items-center gap-1.5">

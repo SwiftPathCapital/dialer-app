@@ -58,7 +58,7 @@ export async function runWorkflowsForDisposition({ tenantId, disposition, leadId
 
   const [{ data: lead }, { data: agent }] = await Promise.all([
     db.from('leads').select('name, first_name, last_name, company_name, phone, email').eq('id', leadId).single(),
-    db.from('agents').select('name, did').eq('id', agentId).single(),
+    db.from('agents').select('name, did, email').eq('id', agentId).single(),
   ])
 
   const phone = leadPhone || lead?.phone || null
@@ -87,7 +87,7 @@ export async function runWorkflowsForDisposition({ tenantId, disposition, leadId
           const subject = renderTemplate(node.data?.subject || '', templateVars)
           const body = renderTemplate(node.data?.body || '', templateVars)
           if (!subject.trim() && !body.trim()) return
-          await sendEmail({ to: lead.email, subject, body })
+          await sendEmail({ tenantId, to: lead.email, subject, text: body, replyTo: agent?.email || null })
         } else if (kind === 'tag') {
           const tagId = node.data?.tagId
           if (!tagId) return

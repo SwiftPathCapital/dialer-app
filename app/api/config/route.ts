@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
 import { getCaller, isAdmin, unauthorized, forbidden } from '@/lib/caller'
 
-// Telnyx and app_url are one set for the whole platform: webhooks and server code read
+// Telnyx, Resend and app_url are one set for the whole platform: webhooks and server code read
 // them by key alone (`.eq('key', …).single()`), so a second row for another tenant would
 // break every reader. Only platform admins may change them, and they're updated in place.
-const PLATFORM_KEYS = ['telnyx_api_key', 'telnyx_public_key', 'telnyx_sip_connection_id', 'telnyx_call_control_connection_id', 'app_url']
+const PLATFORM_KEYS = ['telnyx_api_key', 'telnyx_public_key', 'telnyx_sip_connection_id', 'telnyx_call_control_connection_id', 'app_url', 'resend_api_key']
 // Mailbox settings belong to each account.
 const TENANT_KEYS = [
   'spacemail_email', 'spacemail_password',
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
 
   const platformUpdates = updates.filter(([key]) => PLATFORM_KEYS.includes(key))
   if (platformUpdates.length && !caller.isPlatformAdmin) {
-    return forbidden('Only the platform admin can change Telnyx settings.')
+    return forbidden('Only the platform admin can change platform settings.')
   }
 
   for (const [key, value] of platformUpdates) {

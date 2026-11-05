@@ -37,7 +37,7 @@ export default function LeadsPage() {
 
   async function loadLeads(q = '') {
     setLoading(true)
-    const params = new URLSearchParams({ agent_id: agent!.id, limit: '200' })
+    const params = new URLSearchParams({ agent_id: agent!.id, view: 'browse', limit: '200' })
     if (q) params.set('search', q)
     const countParams = new URLSearchParams(params)
     countParams.set('count', '1')
